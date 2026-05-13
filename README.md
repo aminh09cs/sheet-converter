@@ -1,25 +1,17 @@
-# sheet-converter
+# Sheet-converter
 
-Multi-user converter: paste Google Sheets link → map cột nguồn → export về template Salepro (Cao tầng / Thấp tầng).
 
-## Cách chạy
-
-```bash
-cp .env.example .env
-# Mở .env, paste GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET
-# Generate SESSION_SECRET: python -c "import secrets; print(secrets.token_urlsafe(32))"
+## How to run
 
 uv sync
 uv run python -m converter
 ```
 
-Mở http://127.0.0.1:8001 → bấm **Đăng nhập Google** → consent → quay lại tool đã sign-in.
-
-## Cấu trúc project
+## Project structure
 
 ```
 src/converter/
-├── config.py    Settings từ .env (pydantic-settings)
+├── config.py    Settings from
 ├── auth.py      OAuth flow + TokenStore (per-user)
 ├── sheets.py    Google Sheets API + skip hidden rows
 ├── schema.py    ProjectType + target column lists
