@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Sheet Converter</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="page">
+        <header class="auth-bar">
+            <span class="auth-user">
+                <span class="auth-dot"></span>
+                <span class="auth-email">{{ view.user_email }}</span>
+            </span>
+            <form method="post" action="/auth/logout">
+                <button type="submit" class="btn-ghost">Đăng xuất</button>
+            </form>
+        </header>
+
+        <form method="post" action="/load" class="form-content">
+            <div class="toolbar">
+                <div class="segmented">
+                    {% for option in ['cao_tang', 'thap_tang'] %}
+                    <label class="segmented-option {% if view.project_type.value == option %}is-active{% endif %}">
+                        <input type="radio" name="project_type" value="{{ option }}"
+                               {% if view.project_type.value == option %}checked{% endif %}>
+                        <span>{{ 'Dự án cao tầng' if option == 'cao_tang' else 'Dự án thấp tầng' }}</span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <section class="link-row">
+                <label for="link" class="field-label">Link import</label>
+                <input id="link" name="link" type="url" class="text-input"
+                       placeholder="https://docs.google.com/spreadsheets/d/..."
+                       value="{{ view.link }}">
+                <button type="submit" class="btn-primary">Convert</button>
+            </section>
+
+            {% if view.error %}
+            <div class="banner banner-error">{{ view.error }}</div>
+            {% endif %}
+
+            {% if view.source_columns %}
+            <details class="hint-box">
+                <summary>Các cột có sẵn trong sheet nguồn ({{ view.source_columns|length }})</summary>
+                <div class="chip-row">
+                    {% for col in view.source_columns %}<span class="chip">{{ col }}</span>{% endfor %}
+                </div>
+            </details>
+            {% endif %}
+
+            <div class="grid-header">
+                <div>Data từ sàn</div>
+                <div></div>
+                <div>Data sau khi convert</div>
+            </div>
+
+            <main class="mapping-grid">
+                {% for target in view.target_columns %}
+                <div class="mapping-row">
+                    <input type="text" class="text-input"
+                           name="map[{{ target }}]"
+                           value="{{ view.mapping.get(target, '') }}"
+                           placeholder="Tên cột nguồn hoặc giá trị cố định">
+                    <div class="arrow">▶</div>
+                    <div class="target-pill">{{ target }}</div>
+                </div>
+                {% endfor %}
+            </main>
+
+            <footer class="status-bar">
+                {{ view.target_columns|length }} cột đích · {{ view.project_type.label }}
+                {% if view.source_columns %} · nguồn có {{ view.source_columns|length }} cột{% endif %}
+            </footer>
+        </form>
+    </div>
+
+    <script>
+        document.querySelectorAll('input[name="project_type"]').forEach((el) => {
+            el.addEventListener('change', () => el.closest('form').submit());
+        });
+    </script>
+</body>
+</html>
