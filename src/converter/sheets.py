@@ -55,6 +55,28 @@ def detect_header(rows: list[list[str]]) -> list[str]:
     return []
 
 
+_GRID_FIELDS = (
+    "sheets.data("
+    "rowData.values(formattedValue,effectiveFormat.backgroundColor,hyperlink),"
+    "rowMetadata.hiddenByUser,"
+    "columnMetadata.hiddenByUser"
+    ")"
+)
+
+# Rows tinted with this background mark sold/locked units and must be excluded.
+_EXCLUDED_BG_HEX = "#ff0000"
+
+
+def _bg_hex(cell: dict) -> str | None:
+    color = cell.get("effectiveFormat", {}).get("backgroundColor")
+    if not color:
+        return None
+    r = int(round(color.get("red", 0) * 255))
+    g = int(round(color.get("green", 0) * 255))
+    b = int(round(color.get("blue", 0) * 255))
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def read_source_columns(
     url: str,
     credentials: Credentials,
@@ -71,7 +93,7 @@ def read_source_columns(
                 spreadsheetId=ref.sheet_id,
                 ranges=[f"'{sheet_name}'!A1:Z{sample_rows}"],
                 includeGridData=True,
-                fields="sheets.data(rowData.values.formattedValue,rowMetadata.hiddenByUser)",
+                fields=_GRID_FIELDS,
             )
             .execute()
         )
@@ -80,6 +102,27 @@ def read_source_columns(
 
     visible = _extract_visible_rows(grid)
     return [cell for cell in detect_header(visible) if cell]
+
+
+def read_all_rows(url: str, credentials: Credentials) -> list[list[str]]:
+    ref = parse_url(url)
+    try:
+        service = build("sheets", "v4", credentials=credentials, cache_discovery=False)
+        sheet_name = _resolve_sheet_name(service, ref.sheet_id, ref.gid)
+        grid = (
+            service.spreadsheets()
+            .get(
+                spreadsheetId=ref.sheet_id,
+                ranges=[f"'{sheet_name}'"],
+                includeGridData=True,
+                fields=_GRID_FIELDS,
+            )
+            .execute()
+        )
+    except HttpError as exc:
+        raise SheetReadError(_format_api_error(exc)) from exc
+
+    return _extract_visible_rows(grid)
 
 
 def _resolve_sheet_name(service, sheet_id: str, gid: int) -> str:
@@ -106,15 +149,32 @@ def _extract_visible_rows(api_result: dict) -> list[list[str]]:
     if not blocks:
         return []
     grid = blocks[0]
-    metadata = grid.get("rowMetadata", [])
+    row_meta = grid.get("rowMetadata", [])
+    col_meta = grid.get("columnMetadata", [])
+    hidden_cols = {i for i, m in enumerate(col_meta) if m.get("hiddenByUser")}
     rows = grid.get("rowData", [])
     visible: list[list[str]] = []
     for idx, row in enumerate(rows):
-        if idx < len(metadata) and metadata[idx].get("hiddenByUser"):
+        if idx < len(row_meta) and row_meta[idx].get("hiddenByUser"):
             continue
-        cells = [(cell.get("formattedValue") or "") for cell in row.get("values", [])]
+        visible_cells = [
+            cell for i, cell in enumerate(row.get("values", [])) if i not in hidden_cols
+        ]
+        if any(_bg_hex(cell) == _EXCLUDED_BG_HEX for cell in visible_cells):
+            continue
+        cells = []
+        for cell in visible_cells:
+            value = cell.get("formattedValue") or ""
+            url = cell.get("hyperlink")
+            cells.append(f"{value} → {url}" if url else value)
+        # Trim trailing format-only cells (banding/borders) that have no value
+        while cells and not cells[-1].strip():
+            cells.pop()
+        if not cells:
+            continue
         visible.append(cells)
-    return visible
+    max_len = max((len(r) for r in visible), default=0)
+    return [r + [""] * (max_len - len(r)) for r in visible]
 
 
 def _format_api_error(exc: HttpError) -> str:

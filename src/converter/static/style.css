@@ -302,6 +302,7 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
+    align-items: center;
 }
 
 .chip {
@@ -312,6 +313,117 @@ body {
     background: var(--color-surface-2);
     color: var(--color-text);
     font-weight: 500;
+    white-space: pre-line;
+}
+
+.chip-draggable {
+    cursor: grab;
+    user-select: none;
+    transition: border-color var(--transition), background var(--transition), opacity var(--transition);
+}
+
+.chip-draggable:hover {
+    border-color: var(--color-primary);
+    background: var(--color-surface);
+}
+
+.chip-draggable:active { cursor: grabbing; }
+
+.chip-draggable.is-dragging { opacity: 0.4; }
+
+.chip-used {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: var(--color-surface-2);
+    color: var(--color-text-soft);
+    border-color: var(--color-border);
+    text-decoration: line-through;
+}
+
+.chip-used:hover {
+    border-color: var(--color-border);
+    background: var(--color-surface-2);
+}
+
+/* ───── Drop zone (replaces text input on left side) ───── */
+.drop-zone {
+    display: flex;
+    align-items: center;
+    min-height: 38px;
+    padding: var(--space-1) var(--space-3);
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface);
+    transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+.drop-zone .drop-chip { display: none; }
+.drop-zone-filled .drop-empty { display: none; }
+.drop-zone-filled .drop-chip { display: flex; }
+
+.drop-zone-filled {
+    border-style: solid;
+    border-color: rgb(37 99 235 / 0.3);
+    background: rgb(37 99 235 / 0.06);
+    padding: 0 var(--space-2) 0 var(--space-3);
+}
+
+.drop-zone.drag-over {
+    border-style: solid;
+    border-color: var(--color-primary);
+    background: rgb(37 99 235 / 0.1);
+    box-shadow: var(--shadow-focus);
+}
+
+.drop-empty {
+    color: var(--color-placeholder);
+    font-size: var(--font-sm);
+    font-style: italic;
+    user-select: none;
+}
+
+.drop-chip {
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: 0;
+    background: transparent;
+    border: none;
+    color: var(--color-primary);
+    font-size: var(--font-sm);
+    font-weight: 500;
+}
+
+.drop-chip-text {
+    white-space: pre-line;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+.drop-chip-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    background: rgb(37 99 235 / 0.15);
+    color: var(--color-primary);
+    border-radius: var(--radius-pill);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    font-family: inherit;
+    transition: background var(--transition), color var(--transition);
+}
+
+.drop-chip-clear:hover {
+    background: var(--color-danger);
+    color: var(--color-primary-fg);
 }
 
 /* ───── Mapping grid ───── */

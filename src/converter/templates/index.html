@@ -43,10 +43,10 @@
             {% endif %}
 
             {% if view.source_columns %}
-            <details class="hint-box">
+            <details class="hint-box" open>
                 <summary>Các cột có sẵn trong sheet nguồn ({{ view.source_columns|length }})</summary>
                 <div class="chip-row">
-                    {% for col in view.source_columns %}<span class="chip">{{ col }}</span>{% endfor %}
+                    {% for col in view.source_columns %}<span class="chip chip-draggable" draggable="true" data-col="{{ col }}">{{ col }}</span>{% endfor %}
                 </div>
             </details>
             {% endif %}
@@ -59,11 +59,16 @@
 
             <main class="mapping-grid">
                 {% for target in view.target_columns %}
+                {% set mapped = view.mapping.get(target, '') %}
                 <div class="mapping-row">
-                    <input type="text" class="text-input"
-                           name="map[{{ target }}]"
-                           value="{{ view.mapping.get(target, '') }}"
-                           placeholder="Tên cột nguồn hoặc giá trị cố định">
+                    <div class="drop-zone {% if mapped %}drop-zone-filled{% endif %}" data-target="{{ target }}">
+                        <input type="hidden" name="map[{{ target }}]" value="{{ mapped }}">
+                        <span class="drop-empty">Kéo cột nguồn vào đây</span>
+                        <span class="drop-chip">
+                            <span class="drop-chip-text">{{ mapped }}</span>
+                            <button type="button" class="drop-chip-clear" aria-label="Xóa">×</button>
+                        </span>
+                    </div>
                     <div class="arrow">▶</div>
                     <div class="target-pill">{{ target }}</div>
                 </div>
@@ -81,6 +86,68 @@
         document.querySelectorAll('input[name="project_type"]').forEach((el) => {
             el.addEventListener('change', () => el.closest('form').submit());
         });
+
+        const chips = document.querySelectorAll('.chip-draggable');
+        const dropZones = document.querySelectorAll('.drop-zone');
+
+        function setZoneValue(zone, value) {
+            const input = zone.querySelector('input[type=hidden]');
+            const text = zone.querySelector('.drop-chip-text');
+            input.value = value;
+            text.textContent = value;
+            zone.classList.toggle('drop-zone-filled', !!value);
+        }
+
+        function syncUsedChips() {
+            const used = new Set();
+            dropZones.forEach((zone) => {
+                const v = zone.querySelector('input[type=hidden]').value;
+                if (v) used.add(v);
+            });
+            chips.forEach((chip) => {
+                const isUsed = used.has(chip.dataset.col);
+                chip.classList.toggle('chip-used', isUsed);
+                chip.draggable = !isUsed;
+            });
+        }
+
+        chips.forEach((chip) => {
+            chip.addEventListener('dragstart', (e) => {
+                if (chip.classList.contains('chip-used')) {
+                    e.preventDefault();
+                    return;
+                }
+                e.dataTransfer.setData('text/plain', chip.dataset.col);
+                e.dataTransfer.effectAllowed = 'copy';
+                chip.classList.add('is-dragging');
+            });
+            chip.addEventListener('dragend', () => chip.classList.remove('is-dragging'));
+        });
+
+        dropZones.forEach((zone) => {
+            zone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                zone.classList.add('drag-over');
+            });
+            zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.classList.remove('drag-over');
+                const col = e.dataTransfer.getData('text/plain');
+                if (col) {
+                    setZoneValue(zone, col);
+                    syncUsedChips();
+                }
+            });
+            zone.querySelector('.drop-chip-clear').addEventListener('click', (e) => {
+                e.preventDefault();
+                setZoneValue(zone, '');
+                syncUsedChips();
+            });
+        });
+
+        syncUsedChips();
     </script>
 </body>
 </html>

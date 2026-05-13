@@ -104,7 +104,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error = "Token Google hết hạn. Đăng xuất rồi đăng nhập lại."
         elif link:
             try:
-                source_columns = sheets.read_source_columns(link, credentials)
+                all_rows = sheets.read_all_rows(link, credentials)
+                print(f"=== Tổng {len(all_rows)} dòng ===")
+                for idx, row in enumerate(all_rows, start=1):
+                    print(f"[{idx}] {row}")
+                source_columns = [c for c in sheets.detect_header(all_rows) if c]
             except (sheets.SheetURLError, sheets.SheetReadError) as exc:
                 error = str(exc)
             except Exception as exc:
