@@ -342,26 +342,147 @@ body {
 
 .tab-btn.is-active .tab-icon { opacity: 1; }
 
-.merge-empty {
+/* ───── Merge tab ───── */
+.merge-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.dropzone {
     background: var(--color-surface);
-    border: 1px dashed var(--color-border);
+    border: 2px dashed var(--color-border);
     border-radius: var(--radius-lg);
     padding: var(--space-10) var(--space-6);
     text-align: center;
+    cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
 }
 
-.merge-empty-title {
-    font-size: var(--font-xl);
-    font-weight: 600;
+.dropzone:hover {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+}
+
+.dropzone.is-drag-over {
+    border-color: var(--color-primary);
+    background: var(--color-primary-soft);
+    box-shadow: var(--shadow-focus);
+}
+
+.dropzone-icon {
+    color: var(--color-primary);
+    margin-bottom: var(--space-3);
+}
+
+.dropzone-text {
+    font-size: var(--font-lg);
     color: var(--color-text);
-    margin: 0 0 var(--space-2);
+    margin: 0 0 var(--space-1);
 }
 
-.merge-empty-text {
-    font-size: var(--font-md);
+.dropzone-text b { color: var(--color-primary); }
+
+.dropzone-subtext {
+    font-size: var(--font-sm);
     color: var(--color-text-muted);
+    margin: 0 0 var(--space-3);
+}
+
+.dropzone-link {
+    background: transparent;
+    border: none;
+    color: var(--color-primary);
+    font-weight: 600;
+    font-size: inherit;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.dropzone-hint {
+    font-size: var(--font-xs);
+    color: var(--color-text-soft);
     margin: 0;
 }
+
+.merge-banner {
+    /* uses .banner-* modifier classes for color */
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    font-size: var(--font-sm);
+    font-weight: 500;
+}
+
+.banner-warning {
+    border: 1px solid #f59e0b;
+    color: #b45309;
+    background: #fffbeb;
+}
+
+.file-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.file-list:empty { display: none; }
+
+.file-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto auto;
+    gap: var(--space-3);
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xs);
+}
+
+.file-icon { color: var(--color-primary); flex-shrink: 0; }
+
+.file-name {
+    font-size: var(--font-sm);
+    font-weight: 500;
+    color: var(--color-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-size {
+    font-size: var(--font-xs);
+    color: var(--color-text-soft);
+    font-variant-numeric: tabular-nums;
+}
+
+.file-remove {
+    background: transparent;
+    border: none;
+    color: var(--color-text-soft);
+    font-size: 20px;
+    line-height: 1;
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+}
+
+.file-remove:hover {
+    background: var(--color-danger-bg);
+    color: var(--color-danger);
+}
+
+.merge-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: var(--space-2);
+}
+
+.btn-merge:disabled { cursor: not-allowed; }
+.btn-merge:hover:not(:disabled) .btn-icon { transform: translateY(2px); }
 
 /* ───── Segmented control ───── */
 .toolbar {

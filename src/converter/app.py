@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from converter import auth, sheets
+from converter import auth, merge, sheets
 from converter.config import Settings, get_settings
 from converter.schema import ProjectType, target_columns
 
@@ -214,6 +214,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = "cao_tang" if project_type == ProjectType.HIGH_RISE else "thap_tang"
         filename = f"salepro_{suffix}_block{block}_{timestamp}.xlsx"
+
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    @app.post("/merge")
+    async def merge_endpoint(request: Request) -> Response:
+        email = _current_email(request)
+        if not email:
+            return Response("Chưa đăng nhập", status_code=401)
+
+        form = await request.form()
+        uploads = form.getlist("files")
+        if len(uploads) < 2:
+            return Response("Cần tối thiểu 2 file để merge", status_code=400)
+
+        files: list[tuple[str, bytes]] = []
+        for upload in uploads:
+            content = await upload.read()
+            files.append((upload.filename or "unknown.xlsx", content))
+
+        try:
+            project_type, header, rows, dup_codes = merge.merge_files(files)
+        except merge.MergeError as exc:
+            return Response(str(exc), status_code=400)
+        except Exception as exc:
+            return Response(f"Lỗi không xác định: {exc}", status_code=500)
+
+        xlsx_bytes = merge.build_merged_xlsx(header, rows, dup_codes)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        suffix = "cao_tang" if project_type == ProjectType.HIGH_RISE else "thap_tang"
+        filename = f"salepro_merged_{suffix}_{timestamp}.xlsx"
 
         return Response(
             content=xlsx_bytes,

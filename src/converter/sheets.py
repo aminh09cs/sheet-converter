@@ -16,6 +16,11 @@ if TYPE_CHECKING:
 
 _HYPERLINK_SEP = " → "
 
+# Targets that get a literal fallback value when admin doesn't map a source column.
+_DEFAULT_UNMAPPED_VALUES = {
+    "Trạng thái căn hộ": "Thu hồi",
+}
+
 
 def _split_value_url(cell: str) -> tuple[str, str | None]:
     """Cell may be formatted as 'value → url' (set in _extract_visible_rows)."""
@@ -48,6 +53,9 @@ def build_xlsx(
         for col_idx, target in enumerate(target_columns, start=1):
             src_col = (mapping.get(target) or "").strip()
             if not src_col:
+                default = _DEFAULT_UNMAPPED_VALUES.get(target)
+                if default is not None:
+                    ws.cell(row=row_num, column=col_idx, value=default)
                 continue
             h_idx = header_index.get(src_col)
             if h_idx is None or h_idx >= len(row_data):

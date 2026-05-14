@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Sheet Converter</title>
-    <link rel="stylesheet" href="/static/style.css?v=8">
+    <link rel="stylesheet" href="/static/style.css?v=9">
 </head>
 <body>
     <div class="page">
@@ -19,11 +19,6 @@
                 <button type="submit" class="btn-ghost">Đăng xuất</button>
             </form>
         </header>
-
-        <section class="page-hero">
-            <h1 class="page-title">Sheet Converter</h1>
-            <p class="page-subtitle">Chuyển bảng hàng Google Sheets sang format Salepro</p>
-        </section>
 
         <nav class="tab-bar" role="tablist">
             <button type="button" class="tab-btn is-active" role="tab" aria-selected="true" data-tab="standardize">
@@ -151,9 +146,33 @@
         </div>
 
         <div class="tab-panel" data-panel="merge" hidden>
-            <section class="merge-empty">
-                <h2 class="merge-empty-title">Merge nhiều bảng</h2>
-                <p class="merge-empty-text">Tính năng đang phát triển — sẽ cho phép upload nhiều file xlsx cùng schema và gộp lại thành 1 bảng duy nhất.</p>
+            <section class="merge-section">
+                <div class="dropzone" id="dropzone">
+                    <input type="file" id="fileInput" multiple accept=".xlsx" hidden>
+                    <svg class="dropzone-icon" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <p class="dropzone-text">Kéo thả file <b>.xlsx</b> vào đây</p>
+                    <p class="dropzone-subtext">hoặc <button type="button" class="dropzone-link" id="browseBtn">chọn từ máy</button></p>
+                    <p class="dropzone-hint">File phải là output từ tab Chuẩn hóa (cùng loại cao tầng hoặc thấp tầng)</p>
+                </div>
+
+                <div class="merge-banner" id="mergeBanner" hidden></div>
+
+                <div class="file-list" id="fileList"></div>
+
+                <div class="merge-actions">
+                    <button type="button" class="btn-primary btn-merge" id="mergeBtn" disabled>
+                        <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        <span>Merge & Tải về</span>
+                    </button>
+                </div>
             </section>
         </div>
     </div>
@@ -331,6 +350,127 @@
         });
 
         syncUsedChips();
+
+        // ───── Merge tab ─────
+        const dropzone = document.getElementById('dropzone');
+        const fileInput = document.getElementById('fileInput');
+        const browseBtn = document.getElementById('browseBtn');
+        const fileListEl = document.getElementById('fileList');
+        const mergeBtn = document.getElementById('mergeBtn');
+        const mergeBanner = document.getElementById('mergeBanner');
+        let uploadedFiles = [];
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+
+        function escapeHtml(s) {
+            return s.replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+            }[c]));
+        }
+
+        function renderFileList() {
+            if (uploadedFiles.length === 0) {
+                fileListEl.innerHTML = '';
+            } else {
+                fileListEl.innerHTML = uploadedFiles.map((f, i) => `
+                    <div class="file-item">
+                        <svg class="file-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                        <span class="file-name">${escapeHtml(f.name)}</span>
+                        <span class="file-size">${formatSize(f.size)}</span>
+                        <button type="button" class="file-remove" data-idx="${i}" aria-label="Xóa">×</button>
+                    </div>
+                `).join('');
+            }
+            mergeBtn.disabled = uploadedFiles.length < 2;
+        }
+
+        function setBanner(message, kind) {
+            if (!message) {
+                mergeBanner.hidden = true;
+                mergeBanner.textContent = '';
+                return;
+            }
+            mergeBanner.hidden = false;
+            mergeBanner.textContent = message;
+            mergeBanner.className = 'merge-banner banner-' + (kind || 'error');
+        }
+
+        function addFiles(files) {
+            let rejected = 0;
+            for (const f of files) {
+                if (!f.name.toLowerCase().endsWith('.xlsx')) { rejected++; continue; }
+                if (uploadedFiles.some((u) => u.name === f.name && u.size === f.size)) continue;
+                uploadedFiles.push(f);
+            }
+            setBanner(rejected > 0 ? `${rejected} file không phải .xlsx đã bị bỏ qua` : '', 'warning');
+            renderFileList();
+        }
+
+        if (dropzone) {
+            browseBtn?.addEventListener('click', () => fileInput.click());
+            dropzone.addEventListener('click', (e) => {
+                if (e.target.closest('button')) return;
+                fileInput.click();
+            });
+            fileInput.addEventListener('change', () => {
+                addFiles(fileInput.files);
+                fileInput.value = '';
+            });
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('is-drag-over');
+            });
+            dropzone.addEventListener('dragleave', () => dropzone.classList.remove('is-drag-over'));
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('is-drag-over');
+                addFiles(e.dataTransfer.files);
+            });
+            fileListEl.addEventListener('click', (e) => {
+                const btn = e.target.closest('.file-remove');
+                if (!btn) return;
+                const idx = parseInt(btn.dataset.idx, 10);
+                uploadedFiles.splice(idx, 1);
+                renderFileList();
+            });
+            mergeBtn.addEventListener('click', async () => {
+                if (uploadedFiles.length < 2) return;
+                setBanner('', 'error');
+                showLoading();
+                try {
+                    const formData = new FormData();
+                    uploadedFiles.forEach((f) => formData.append('files', f));
+                    const resp = await fetch('/merge', { method: 'POST', body: formData });
+                    if (!resp.ok) {
+                        const msg = await resp.text();
+                        throw new Error(msg || 'Merge thất bại');
+                    }
+                    const disposition = resp.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="?([^"]+)"?/);
+                    const filename = match ? match[1] : 'merged.xlsx';
+                    const blob = await resp.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    setBanner(err.message || 'Lỗi khi merge', 'error');
+                } finally {
+                    hideLoading();
+                }
+            });
+        }
     </script>
 </body>
 </html>
