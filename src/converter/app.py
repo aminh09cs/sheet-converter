@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,13 +19,20 @@ _templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
 
 
 @dataclass
+class BlockView:
+    index: int
+    header: list[str]
+    data_count: int
+    mapping: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class IndexView:
     project_type: ProjectType
     target_columns: tuple[str, ...]
     user_email: str | None = None
     link: str = ""
-    mapping: dict[str, str] = field(default_factory=dict)
-    source_columns: list[str] | None = None
+    blocks: list[BlockView] = field(default_factory=list)
     error: str | None = None
     oauth_configured: bool = True
 
@@ -36,12 +44,18 @@ def _coerce_project_type(raw: str | None) -> ProjectType:
         return ProjectType.LOW_RISE
 
 
-def _extract_mapping(form_items: list[tuple[str, str]]) -> dict[str, str]:
-    mapping: dict[str, str] = {}
+_MAP_RE = re.compile(r"^map\[(\d+)\]\[(.+)\]$")
+
+
+def _extract_mappings(form_items: list[tuple[str, str]]) -> dict[int, dict[str, str]]:
+    mappings: dict[int, dict[str, str]] = {}
     for key, value in form_items:
-        if key.startswith("map[") and key.endswith("]"):
-            mapping[key[4:-1]] = (value or "").strip()
-    return mapping
+        match = _MAP_RE.match(key)
+        if match:
+            idx = int(match.group(1))
+            target = match.group(2)
+            mappings.setdefault(idx, {})[target] = (value or "").strip()
+    return mappings
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -77,9 +91,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         email = _current_email(request)
         if not email:
             return _render_login(request)
+        project_type = _coerce_project_type(request.query_params.get("project_type"))
         view = IndexView(
-            project_type=ProjectType.LOW_RISE,
-            target_columns=target_columns(ProjectType.LOW_RISE),
+            project_type=project_type,
+            target_columns=target_columns(project_type),
             user_email=email,
             oauth_configured=settings.is_oauth_configured,
         )
@@ -94,10 +109,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         form = await request.form()
         link = (form.get("link") or "").strip()
         project_type = _coerce_project_type(form.get("project_type"))
-        mapping = _extract_mapping([(k, str(v)) for k, v in form.multi_items()])
+        mappings = _extract_mappings([(k, str(v)) for k, v in form.multi_items()])
         credentials = _current_credentials(email)
 
-        source_columns: list[str] | None = None
+        blocks_view: list[BlockView] = []
         error: str | None = None
 
         if link and not credentials:
@@ -105,10 +120,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif link:
             try:
                 all_rows = sheets.read_all_rows(link, credentials)
-                print(f"=== Tổng {len(all_rows)} dòng ===")
-                for idx, row in enumerate(all_rows, start=1):
-                    print(f"[{idx}] {row}")
-                source_columns = [c for c in sheets.detect_header(all_rows) if c]
+                raw_blocks = sheets.split_into_blocks(all_rows)
+                total_data = sum(len(d) for _, d in raw_blocks)
+                junk = len(all_rows) - total_data - len(raw_blocks)
+                print(f"=== {len(raw_blocks)} block, {total_data} data rows, loại {junk} junk ===")
+                for block_idx, (header, data) in enumerate(raw_blocks, start=1):
+                    print(f"--- Block {block_idx}: Header ({len(header)} cột) ---")
+                    print(header)
+                    print(f"--- Block {block_idx}: Data ({len(data)} dòng) ---")
+                    for idx, row in enumerate(data, start=1):
+                        print(f"  [{idx}] {row}")
+                    blocks_view.append(
+                        BlockView(
+                            index=block_idx,
+                            header=header,
+                            data_count=len(data),
+                            mapping=mappings.get(block_idx, {}),
+                        )
+                    )
             except (sheets.SheetURLError, sheets.SheetReadError) as exc:
                 error = str(exc)
             except Exception as exc:
@@ -119,8 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             target_columns=target_columns(project_type),
             user_email=email,
             link=link,
-            mapping=mapping,
-            source_columns=source_columns,
+            blocks=blocks_view,
             error=error,
             oauth_configured=settings.is_oauth_configured,
         )

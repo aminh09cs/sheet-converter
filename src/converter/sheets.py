@@ -55,6 +55,86 @@ def detect_header(rows: list[list[str]]) -> list[str]:
     return []
 
 
+def _is_header_candidate(row: list[str]) -> bool:
+    """Row looks like a header: ≥4 non-empty cells, ≥70% start with non-digit."""
+    non_empty = [cell.strip() for cell in row if cell.strip()]
+    if len(non_empty) < 4:
+        return False
+    text_cells = sum(1 for cell in non_empty if not cell[0].isdigit())
+    return text_cells >= len(non_empty) * 0.7
+
+
+def _merge_header_rows(main: list[str], sub: list[str]) -> list[str]:
+    """Combine sub-header values into main using nearest non-empty main cell as parent."""
+    merged: list[str] = []
+    parent = ""
+    width = max(len(main), len(sub))
+    for i in range(width):
+        m = (main[i] if i < len(main) else "").strip()
+        s = (sub[i] if i < len(sub) else "").strip()
+        if m:
+            parent = m
+        if s:
+            merged.append(f"{parent} - {s}" if parent and parent != s else s)
+        else:
+            merged.append(m)
+    return merged
+
+
+def split_into_blocks(
+    rows: list[list[str]],
+) -> list[tuple[list[str], list[list[str]]]]:
+    """Detect all (header, data_rows) blocks in a sheet.
+
+    A new block starts at each header-like row. Sub-header rows (sparse + fill
+    gaps) are merged into the parent header. Data rows must have ≥50% of the
+    current header width filled to count.
+    """
+    blocks: list[tuple[list[str], list[list[str]]]] = []
+    cur_header: list[str] | None = None
+    cur_threshold = 0.0
+    cur_data: list[list[str]] = []
+
+    i = 0
+    n = len(rows)
+    while i < n:
+        row = rows[i]
+        if _is_header_candidate(row):
+            if cur_header is not None and cur_data:
+                blocks.append((cur_header, cur_data))
+
+            main = row
+            next_i = i + 1
+            if next_i < n:
+                cand = rows[next_i]
+                cand_non_empty = sum(1 for c in cand if c.strip())
+                main_size = sum(1 for c in main if c.strip())
+                fills_gaps = any(
+                    j < len(main) and cand[j].strip() and not main[j].strip()
+                    for j in range(len(cand))
+                )
+                if 0 < cand_non_empty < main_size * 0.5 and fills_gaps:
+                    main = _merge_header_rows(main, cand)
+                    next_i += 1
+
+            cur_header = [c.strip() for c in main if c.strip()]
+            cur_threshold = len(cur_header) * 0.5
+            cur_data = []
+            i = next_i
+            continue
+
+        if cur_header is not None:
+            non_empty = sum(1 for c in row if c.strip())
+            if non_empty >= cur_threshold:
+                cur_data.append(row)
+        i += 1
+
+    if cur_header is not None and cur_data:
+        blocks.append((cur_header, cur_data))
+
+    return blocks
+
+
 _GRID_FIELDS = (
     "sheets.data("
     "rowData.values(formattedValue,effectiveFormat.backgroundColor,hyperlink),"

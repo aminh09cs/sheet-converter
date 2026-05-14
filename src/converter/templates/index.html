@@ -3,19 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <title>Sheet Converter</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
     <div class="page">
         <header class="auth-bar">
             <span class="auth-user">
-                <span class="auth-dot"></span>
-                <span class="auth-email">{{ view.user_email }}</span>
+                <span class="auth-avatar">{{ (view.user_email or '?')[0]|upper }}</span>
+                <span class="auth-meta">
+                    <span class="auth-email">{{ view.user_email }}</span>
+                    <span class="auth-status"><span class="auth-dot"></span>Đã kết nối</span>
+                </span>
             </span>
             <form method="post" action="/auth/logout">
                 <button type="submit" class="btn-ghost">Đăng xuất</button>
             </form>
         </header>
+
+        <section class="page-hero">
+            <h1 class="page-title">Sheet Converter</h1>
+            <p class="page-subtitle">Chuyển bảng hàng Google Sheets sang format Salepro</p>
+        </section>
 
         <form method="post" action="/load" class="form-content">
             <div class="toolbar">
@@ -34,61 +42,95 @@
                 <label for="link" class="field-label">Link import</label>
                 <input id="link" name="link" type="url" class="text-input"
                        placeholder="https://docs.google.com/spreadsheets/d/..."
-                       value="{{ view.link }}">
-                <button type="submit" class="btn-primary">Convert</button>
+                       value="{{ view.link }}" required>
+                <button type="submit" class="btn-primary" {% if not view.link %}disabled{% endif %}>
+                    <span>Convert</span>
+                </button>
             </section>
 
             {% if view.error %}
             <div class="banner banner-error">{{ view.error }}</div>
             {% endif %}
 
-            {% if view.source_columns %}
-            <details class="hint-box" open>
-                <summary>Các cột có sẵn trong sheet nguồn ({{ view.source_columns|length }})</summary>
-                <div class="chip-row">
-                    {% for col in view.source_columns %}<span class="chip chip-draggable" draggable="true" data-col="{{ col }}">{{ col }}</span>{% endfor %}
-                </div>
-            </details>
-            {% endif %}
-
-            <div class="grid-header">
-                <div>Data từ sàn</div>
-                <div></div>
-                <div>Data sau khi convert</div>
-            </div>
-
-            <main class="mapping-grid">
-                {% for target in view.target_columns %}
-                {% set mapped = view.mapping.get(target, '') %}
-                <div class="mapping-row">
-                    <div class="drop-zone {% if mapped %}drop-zone-filled{% endif %}" data-target="{{ target }}">
-                        <input type="hidden" name="map[{{ target }}]" value="{{ mapped }}">
-                        <span class="drop-empty">Kéo cột nguồn vào đây</span>
-                        <span class="drop-chip">
-                            <span class="drop-chip-text">{{ mapped }}</span>
-                            <button type="button" class="drop-chip-clear" aria-label="Xóa">×</button>
+            {% for block in view.blocks %}
+            <section class="block-section" data-block="{{ block.index }}">
+                <header class="block-header">
+                    <span class="block-badge">{{ block.index }}</span>
+                    <div class="block-info">
+                        <span class="block-title">{% if view.blocks|length > 1 %}Bảng nguồn {{ block.index }}{% else %}Bảng nguồn{% endif %}</span>
+                        <span class="block-meta">
+                            <span class="block-stat"><b>{{ block.header|length }}</b> cột</span>
+                            <span class="block-stat-sep">·</span>
+                            <span class="block-stat"><b>{{ block.data_count }}</b> dòng data</span>
                         </span>
                     </div>
-                    <div class="arrow">▶</div>
-                    <div class="target-pill">{{ target }}</div>
+                </header>
+
+                <details class="hint-box" open>
+                    <summary>
+                        <span class="hint-summary-label">Các cột có sẵn</span>
+                        <span class="hint-summary-count">{{ block.header|length }}</span>
+                    </summary>
+                    <div class="chip-row">
+                        {% for col in block.header %}<span class="chip chip-draggable" draggable="true" data-col="{{ col }}" data-block="{{ block.index }}">{{ col }}</span>{% endfor %}
+                    </div>
+                </details>
+
+                <div class="grid-header">
+                    <div>Data từ sàn</div>
+                    <div></div>
+                    <div>Data sau khi convert</div>
                 </div>
-                {% endfor %}
-            </main>
+
+                <main class="mapping-grid">
+                    {% for target in view.target_columns %}
+                    {% set mapped = block.mapping.get(target, '') %}
+                    <div class="mapping-row">
+                        <div class="drop-zone {% if mapped %}drop-zone-filled{% endif %}" data-block="{{ block.index }}" data-target="{{ target }}">
+                            <input type="hidden" name="map[{{ block.index }}][{{ target }}]" value="{{ mapped }}">
+                            <span class="drop-empty">Kéo cột nguồn vào đây</span>
+                            <span class="drop-chip">
+                                <span class="drop-chip-text">{{ mapped }}</span>
+                                <button type="button" class="drop-chip-clear" aria-label="Xóa">×</button>
+                            </span>
+                        </div>
+                        <div class="arrow">→</div>
+                        <div class="target-pill">{{ target }}</div>
+                    </div>
+                    {% endfor %}
+                </main>
+            </section>
+            {% endfor %}
 
             <footer class="status-bar">
                 {{ view.target_columns|length }} cột đích · {{ view.project_type.label }}
-                {% if view.source_columns %} · nguồn có {{ view.source_columns|length }} cột{% endif %}
+                {% if view.blocks %} · {{ view.blocks|length }} bảng nguồn{% endif %}
             </footer>
         </form>
     </div>
 
     <script>
-        document.querySelectorAll('input[name="project_type"]').forEach((el) => {
-            el.addEventListener('change', () => el.closest('form').submit());
+        document.querySelectorAll('input[name="project_type"]').forEach((input) => {
+            input.addEventListener('change', () => {
+                if (input.checked) {
+                    window.location.href = '/?project_type=' + encodeURIComponent(input.value);
+                }
+            });
         });
+
+        const linkInput = document.getElementById('link');
+        const convertBtn = linkInput?.closest('form')?.querySelector('.btn-primary');
+        if (linkInput && convertBtn) {
+            const toggleConvert = () => {
+                convertBtn.disabled = !linkInput.value.trim();
+            };
+            linkInput.addEventListener('input', toggleConvert);
+            toggleConvert();
+        }
 
         const chips = document.querySelectorAll('.chip-draggable');
         const dropZones = document.querySelectorAll('.drop-zone');
+        let dragSourceBlock = null;
 
         function setZoneValue(zone, value) {
             const input = zone.querySelector('input[type=hidden]');
@@ -99,13 +141,16 @@
         }
 
         function syncUsedChips() {
-            const used = new Set();
+            const usedByBlock = {};
             dropZones.forEach((zone) => {
+                const blk = zone.dataset.block;
+                if (!usedByBlock[blk]) usedByBlock[blk] = new Set();
                 const v = zone.querySelector('input[type=hidden]').value;
-                if (v) used.add(v);
+                if (v) usedByBlock[blk].add(v);
             });
             chips.forEach((chip) => {
-                const isUsed = used.has(chip.dataset.col);
+                const set = usedByBlock[chip.dataset.block];
+                const isUsed = !!(set && set.has(chip.dataset.col));
                 chip.classList.toggle('chip-used', isUsed);
                 chip.draggable = !isUsed;
             });
@@ -117,21 +162,27 @@
                     e.preventDefault();
                     return;
                 }
+                dragSourceBlock = chip.dataset.block;
                 e.dataTransfer.setData('text/plain', chip.dataset.col);
                 e.dataTransfer.effectAllowed = 'copy';
                 chip.classList.add('is-dragging');
             });
-            chip.addEventListener('dragend', () => chip.classList.remove('is-dragging'));
+            chip.addEventListener('dragend', () => {
+                chip.classList.remove('is-dragging');
+                dragSourceBlock = null;
+            });
         });
 
         dropZones.forEach((zone) => {
             zone.addEventListener('dragover', (e) => {
+                if (dragSourceBlock && dragSourceBlock !== zone.dataset.block) return;
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'copy';
                 zone.classList.add('drag-over');
             });
             zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
             zone.addEventListener('drop', (e) => {
+                if (dragSourceBlock && dragSourceBlock !== zone.dataset.block) return;
                 e.preventDefault();
                 zone.classList.remove('drag-over');
                 const col = e.dataTransfer.getData('text/plain');
