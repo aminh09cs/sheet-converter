@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Sheet Converter</title>
-    <link rel="stylesheet" href="/static/style.css?v=2">
+    <link rel="stylesheet" href="/static/style.css?v=3">
 </head>
 <body>
     <div class="page">
@@ -109,10 +109,27 @@
         </form>
     </div>
 
+    <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
+        <div class="loading-card">
+            <div class="loading-spinner"></div>
+            <p class="loading-text">Đang xử lý sheet...</p>
+            <p class="loading-subtext">Vui lòng chờ vài giây</p>
+        </div>
+    </div>
+
     <script>
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        function showLoading() {
+            if (loadingOverlay) {
+                loadingOverlay.classList.add('is-visible');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
         document.querySelectorAll('input[name="project_type"]').forEach((input) => {
             input.addEventListener('change', () => {
                 if (input.checked) {
+                    showLoading();
                     window.location.href = '/?project_type=' + encodeURIComponent(input.value);
                 }
             });
@@ -120,6 +137,7 @@
 
         const linkInput = document.getElementById('link');
         const convertBtn = linkInput?.closest('form')?.querySelector('.btn-primary');
+        const mainForm = convertBtn?.closest('form');
         if (linkInput && convertBtn) {
             const toggleConvert = () => {
                 convertBtn.disabled = !linkInput.value.trim();
@@ -127,6 +145,16 @@
             linkInput.addEventListener('input', toggleConvert);
             toggleConvert();
         }
+        if (mainForm) {
+            mainForm.addEventListener('submit', () => showLoading());
+        }
+
+        window.addEventListener('pageshow', (e) => {
+            if (e.persisted && loadingOverlay) {
+                loadingOverlay.classList.remove('is-visible');
+                document.body.style.overflow = '';
+            }
+        });
 
         const chips = document.querySelectorAll('.chip-draggable');
         const dropZones = document.querySelectorAll('.drop-zone');
