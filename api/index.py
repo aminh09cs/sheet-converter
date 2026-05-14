@@ -6,5 +6,8 @@ _SRC = Path(__file__).resolve().parent.parent / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+# Explicit re-export so ruff F401 doesn't strip this — Vercel's @vercel/python
+# discovers the ASGI handler by reading a module-level `app` symbol.
+from converter.app import app as app  # noqa: E402
 
-# Vercel's @vercel/python detects ASGI `app` and serves it.
+__all__ = ["app"]
