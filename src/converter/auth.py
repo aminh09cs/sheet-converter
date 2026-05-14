@@ -76,16 +76,18 @@ def get_user_email(credentials: Credentials) -> str:
 
 class TokenStore:
     def __init__(self, path: Path) -> None:
+        # Lazy: don't touch filesystem on init — serverless hosts (Vercel) only allow
+        # writes to /tmp, so we defer dir creation until the first save() call.
         self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        if not self.path.exists():
-            self.path.write_text("{}", encoding="utf-8")
 
     def _read(self) -> dict[str, dict]:
+        if not self.path.exists():
+            return {}
         raw = self.path.read_text(encoding="utf-8") or "{}"
         return json.loads(raw)
 
     def _write(self, data: dict[str, dict]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
 
     def save(self, email: str, credentials: Credentials) -> None:
