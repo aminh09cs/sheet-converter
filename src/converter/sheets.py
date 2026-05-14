@@ -2,13 +2,67 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from io import BytesIO
 from typing import TYPE_CHECKING
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from openpyxl import Workbook
+from openpyxl.styles import Font
 
 if TYPE_CHECKING:
     from google.oauth2.credentials import Credentials
+
+
+_HYPERLINK_SEP = " → "
+
+
+def _split_value_url(cell: str) -> tuple[str, str | None]:
+    """Cell may be formatted as 'value → url' (set in _extract_visible_rows)."""
+    if _HYPERLINK_SEP in cell:
+        value, url = cell.split(_HYPERLINK_SEP, 1)
+        return value.strip(), url.strip() or None
+    return cell, None
+
+
+def build_xlsx(
+    source_header: list[str],
+    source_rows: list[list[str]],
+    target_columns: tuple[str, ...],
+    mapping: dict[str, str],
+) -> bytes:
+    """Generate xlsx where columns follow target_columns, values pulled from source via mapping."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+
+    # Header row
+    bold = Font(bold=True)
+    for col_idx, target in enumerate(target_columns, start=1):
+        cell = ws.cell(row=1, column=col_idx, value=target)
+        cell.font = bold
+
+    header_index = {col: i for i, col in enumerate(source_header)}
+
+    for row_num, row_data in enumerate(source_rows, start=2):
+        for col_idx, target in enumerate(target_columns, start=1):
+            src_col = (mapping.get(target) or "").strip()
+            if not src_col:
+                continue
+            h_idx = header_index.get(src_col)
+            if h_idx is None or h_idx >= len(row_data):
+                continue
+            raw = row_data[h_idx]
+            value, url = _split_value_url(raw)
+            cell = ws.cell(row=row_num, column=col_idx, value=value)
+            if url:
+                cell.hyperlink = url
+                cell.style = "Hyperlink"
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
 
 _SHEET_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
 _GID_RE = re.compile(r"[?#&]gid=(\d+)")
@@ -55,13 +109,31 @@ def detect_header(rows: list[list[str]]) -> list[str]:
     return []
 
 
+_JUNK_CELL_MAX_LEN = 50
+
+
+_CODE_PATTERN_RE = re.compile(r"^[A-ZĐ][A-ZĐa-zđ\d]*-\d", re.UNICODE)
+
+
 def _is_header_candidate(row: list[str]) -> bool:
-    """Row looks like a header: ≥4 non-empty cells, ≥70% start with non-digit."""
+    """Row looks like a header: ≥4 non-empty cells, ≥70% start with non-digit,
+    and no cell matches an ID code pattern like 'SX21-01' or 'VT64-07'."""
     non_empty = [cell.strip() for cell in row if cell.strip()]
     if len(non_empty) < 4:
         return False
+    # Header cells never contain unit ID codes — these only appear in data rows.
+    if any(_CODE_PATTERN_RE.match(c) for c in non_empty):
+        return False
     text_cells = sum(1 for cell in non_empty if not cell[0].isdigit())
     return text_cells >= len(non_empty) * 0.7
+
+
+def _is_data_row(row: list[str]) -> bool:
+    """Data row must have ≥2 non-empty cells AND contain a unit ID code (Mã căn)."""
+    cells = [c.strip() for c in row if c.strip()]
+    if len(cells) < 2:
+        return False
+    return any(_CODE_PATTERN_RE.match(c) for c in cells)
 
 
 def _merge_header_rows(main: list[str], sub: list[str]) -> list[str]:
@@ -87,12 +159,11 @@ def split_into_blocks(
     """Detect all (header, data_rows) blocks in a sheet.
 
     A new block starts at each header-like row. Sub-header rows (sparse + fill
-    gaps) are merged into the parent header. Data rows must have ≥50% of the
-    current header width filled to count.
+    gaps) are merged into the parent header. Data rows pass the narrow junk
+    filter (≥2 cells, no cell longer than _JUNK_CELL_MAX_LEN chars).
     """
     blocks: list[tuple[list[str], list[list[str]]]] = []
     cur_header: list[str] | None = None
-    cur_threshold = 0.0
     cur_data: list[list[str]] = []
 
     i = 0
@@ -118,15 +189,12 @@ def split_into_blocks(
                     next_i += 1
 
             cur_header = [c.strip() for c in main if c.strip()]
-            cur_threshold = len(cur_header) * 0.5
             cur_data = []
             i = next_i
             continue
 
-        if cur_header is not None:
-            non_empty = sum(1 for c in row if c.strip())
-            if non_empty >= cur_threshold:
-                cur_data.append(row)
+        if cur_header is not None and _is_data_row(row):
+            cur_data.append(row)
         i += 1
 
     if cur_header is not None and cur_data:
@@ -137,14 +205,47 @@ def split_into_blocks(
 
 _GRID_FIELDS = (
     "sheets.data("
-    "rowData.values(formattedValue,effectiveFormat.backgroundColor,hyperlink),"
-    "rowMetadata.hiddenByUser,"
+    "rowData.values("
+    "formattedValue,effectiveFormat.backgroundColor,hyperlink,"
+    "userEnteredValue,textFormatRuns,chipRuns"
+    "),"
+    "rowMetadata(hiddenByUser,hiddenByFilter),"
     "columnMetadata.hiddenByUser"
     ")"
 )
 
 # Rows tinted with this background mark sold/locked units and must be excluded.
 _EXCLUDED_BG_HEX = "#ff0000"
+
+_HYPERLINK_FORMULA_RE = re.compile(r'HYPERLINK\s*\(\s*"([^"]+)"', re.IGNORECASE)
+_DEBUG_URL_FOUND = 0
+
+
+def _resolve_cell_url(cell: dict) -> str | None:
+    """Try every place Sheets stores a URL: cell-level link, formula, rich text, smart chip."""
+    url = cell.get("hyperlink")
+    if url:
+        return url
+    formula = cell.get("userEnteredValue", {}).get("formulaValue", "") or ""
+    if formula:
+        match = _HYPERLINK_FORMULA_RE.search(formula)
+        if match:
+            return match.group(1)
+    for run in cell.get("textFormatRuns", []) or []:
+        link_uri = run.get("format", {}).get("link", {}).get("uri")
+        if link_uri:
+            return link_uri
+    for chip_run in cell.get("chipRuns", []) or []:
+        chip = chip_run.get("chip", {})
+        # Drive file chips
+        uri = chip.get("richLinkProperties", {}).get("uri")
+        if uri:
+            return uri
+        # Plain link chips (some versions)
+        uri = chip.get("linkProperties", {}).get("uri")
+        if uri:
+            return uri
+    return None
 
 
 def _bg_hex(cell: dict) -> str | None:
@@ -235,8 +336,10 @@ def _extract_visible_rows(api_result: dict) -> list[list[str]]:
     rows = grid.get("rowData", [])
     visible: list[list[str]] = []
     for idx, row in enumerate(rows):
-        if idx < len(row_meta) and row_meta[idx].get("hiddenByUser"):
-            continue
+        if idx < len(row_meta):
+            meta = row_meta[idx]
+            if meta.get("hiddenByUser") or meta.get("hiddenByFilter"):
+                continue
         visible_cells = [
             cell for i, cell in enumerate(row.get("values", [])) if i not in hidden_cols
         ]
@@ -245,8 +348,8 @@ def _extract_visible_rows(api_result: dict) -> list[list[str]]:
         cells = []
         for cell in visible_cells:
             value = cell.get("formattedValue") or ""
-            url = cell.get("hyperlink")
-            cells.append(f"{value} → {url}" if url else value)
+            url = _resolve_cell_url(cell)
+            cells.append(url if url else value)
         # Trim trailing format-only cells (banding/borders) that have no value
         while cells and not cells[-1].strip():
             cells.pop()

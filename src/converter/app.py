@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -122,8 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 all_rows = sheets.read_all_rows(link, credentials)
                 raw_blocks = sheets.split_into_blocks(all_rows)
                 total_data = sum(len(d) for _, d in raw_blocks)
-                junk = len(all_rows) - total_data - len(raw_blocks)
-                print(f"=== {len(raw_blocks)} block, {total_data} data rows, loại {junk} junk ===")
+                print(f"=== {len(raw_blocks)} block, {total_data} data rows ===")
                 for block_idx, (header, data) in enumerate(raw_blocks, start=1):
                     print(f"--- Block {block_idx}: Header ({len(header)} cột) ---")
                     print(header)
@@ -178,6 +178,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception as exc:
             return HTMLResponse(f"OAuth error: {exc}", status_code=500)
         return RedirectResponse("/", status_code=303)
+
+    @app.post("/export")
+    async def export(request: Request) -> Response:
+        email = _current_email(request)
+        if not email:
+            return Response("Chưa đăng nhập", status_code=401)
+
+        form = await request.form()
+        link = (form.get("link") or "").strip()
+        block = int(request.query_params.get("block", "1") or 1)
+        project_type = _coerce_project_type(form.get("project_type"))
+        mappings = _extract_mappings([(k, str(v)) for k, v in form.multi_items()])
+        credentials = _current_credentials(email)
+
+        if not link:
+            return Response("Thiếu link", status_code=400)
+        if not credentials:
+            return Response("Token Google hết hạn. Đăng xuất rồi đăng nhập lại.", status_code=401)
+
+        try:
+            all_rows = sheets.read_all_rows(link, credentials)
+            raw_blocks = sheets.split_into_blocks(all_rows)
+        except (sheets.SheetURLError, sheets.SheetReadError) as exc:
+            return Response(str(exc), status_code=400)
+
+        if block < 1 or block > len(raw_blocks):
+            return Response(f"Block {block} không tồn tại", status_code=400)
+
+        header, data = raw_blocks[block - 1]
+        block_mapping = mappings.get(block, {})
+        targets = target_columns(project_type)
+
+        xlsx_bytes = sheets.build_xlsx(header, data, targets, block_mapping)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        suffix = "cao_tang" if project_type == ProjectType.HIGH_RISE else "thap_tang"
+        filename = f"salepro_{suffix}_block{block}_{timestamp}.xlsx"
+
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     @app.post("/auth/logout")
     def logout(request: Request):

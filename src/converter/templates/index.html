@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Sheet Converter</title>
-    <link rel="stylesheet" href="/static/style.css?v=3">
+    <link rel="stylesheet" href="/static/style.css?v=8">
 </head>
 <body>
     <div class="page">
@@ -25,6 +25,30 @@
             <p class="page-subtitle">Chuyển bảng hàng Google Sheets sang format Salepro</p>
         </section>
 
+        <nav class="tab-bar" role="tablist">
+            <button type="button" class="tab-btn is-active" role="tab" aria-selected="true" data-tab="standardize">
+                <svg class="tab-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="7 3 3 7 7 11"></polyline>
+                    <line x1="3" y1="7" x2="17" y2="7"></line>
+                    <polyline points="17 13 21 17 17 21"></polyline>
+                    <line x1="21" y1="17" x2="7" y2="17"></line>
+                </svg>
+                <span>Chuẩn hóa 1 bảng</span>
+            </button>
+            <button type="button" class="tab-btn" role="tab" aria-selected="false" data-tab="merge">
+                <svg class="tab-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M8 6h13"></path>
+                    <path d="M8 12h13"></path>
+                    <path d="M8 18h13"></path>
+                    <path d="M3 6h.01"></path>
+                    <path d="M3 12h.01"></path>
+                    <path d="M3 18h.01"></path>
+                </svg>
+                <span>Merge nhiều bảng</span>
+            </button>
+        </nav>
+
+        <div class="tab-panel" data-panel="standardize">
         <form method="post" action="/load" class="form-content">
             <div class="toolbar">
                 <div class="segmented">
@@ -44,7 +68,13 @@
                        placeholder="https://docs.google.com/spreadsheets/d/..."
                        value="{{ view.link }}" required>
                 <button type="submit" class="btn-primary" {% if not view.link %}disabled{% endif %}>
-                    <span>Convert</span>
+                    <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="7 3 3 7 7 11"></polyline>
+                        <line x1="3" y1="7" x2="17" y2="7"></line>
+                        <polyline points="17 13 21 17 17 21"></polyline>
+                        <line x1="21" y1="17" x2="7" y2="17"></line>
+                    </svg>
+                    <span>Standardize</span>
                 </button>
             </section>
 
@@ -60,7 +90,7 @@
                         <span class="block-title">{% if view.blocks|length > 1 %}Bảng nguồn {{ block.index }}{% else %}Bảng nguồn{% endif %}</span>
                         <span class="block-meta">
                             <span class="block-stat"><b>{{ block.header|length }}</b> cột</span>
-                            <span class="block-stat-sep">·</span>
+                            <span class="block-stat-sep"> - </span>
                             <span class="block-stat"><b>{{ block.data_count }}</b> dòng data</span>
                         </span>
                     </div>
@@ -99,6 +129,17 @@
                     </div>
                     {% endfor %}
                 </main>
+
+                <div class="block-footer">
+                    <button type="button" class="btn-primary btn-export" data-block="{{ block.index }}">
+                        <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                        <span>Export</span>
+                    </button>
+                </div>
             </section>
             {% endfor %}
 
@@ -107,6 +148,14 @@
                 {% if view.blocks %} · {{ view.blocks|length }} bảng nguồn{% endif %}
             </footer>
         </form>
+        </div>
+
+        <div class="tab-panel" data-panel="merge" hidden>
+            <section class="merge-empty">
+                <h2 class="merge-empty-title">Merge nhiều bảng</h2>
+                <p class="merge-empty-text">Tính năng đang phát triển — sẽ cho phép upload nhiều file xlsx cùng schema và gộp lại thành 1 bảng duy nhất.</p>
+            </section>
+        </div>
     </div>
 
     <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
@@ -125,6 +174,20 @@
                 document.body.style.overflow = 'hidden';
             }
         }
+
+        document.querySelectorAll('.tab-btn').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const target = btn.dataset.tab;
+                document.querySelectorAll('.tab-panel').forEach((panel) => {
+                    panel.hidden = panel.dataset.panel !== target;
+                });
+                document.querySelectorAll('.tab-btn').forEach((b) => {
+                    const active = b.dataset.tab === target;
+                    b.classList.toggle('is-active', active);
+                    b.setAttribute('aria-selected', active ? 'true' : 'false');
+                });
+            });
+        });
 
         document.querySelectorAll('input[name="project_type"]').forEach((input) => {
             input.addEventListener('change', () => {
@@ -154,6 +217,47 @@
                 loadingOverlay.classList.remove('is-visible');
                 document.body.style.overflow = '';
             }
+        });
+
+        function hideLoading() {
+            if (loadingOverlay) {
+                loadingOverlay.classList.remove('is-visible');
+                document.body.style.overflow = '';
+            }
+        }
+
+        document.querySelectorAll('.btn-export').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const blockIdx = btn.dataset.block;
+                showLoading();
+                try {
+                    const formData = new FormData(mainForm);
+                    const resp = await fetch('/export?block=' + encodeURIComponent(blockIdx), {
+                        method: 'POST',
+                        body: formData,
+                    });
+                    if (!resp.ok) {
+                        const msg = await resp.text();
+                        throw new Error(msg || 'Export thất bại');
+                    }
+                    const disposition = resp.headers.get('Content-Disposition') || '';
+                    const match = disposition.match(/filename="?([^"]+)"?/);
+                    const filename = match ? match[1] : 'export.xlsx';
+                    const blob = await resp.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    alert('Lỗi khi tạo file: ' + err.message);
+                } finally {
+                    hideLoading();
+                }
+            });
         });
 
         const chips = document.querySelectorAll('.chip-draggable');
