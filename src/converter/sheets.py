@@ -37,8 +37,16 @@ def build_xlsx(
     source_rows: list[list[str]],
     target_columns: tuple[str, ...],
     mapping: dict[str, str],
+    literals: dict[str, str] | None = None,
 ) -> bytes:
-    """Generate xlsx where columns follow target_columns, values pulled from source via mapping."""
+    """Generate xlsx where columns follow target_columns.
+
+    Resolution order per cell:
+      1. `literals[target]` — same constant value across all rows;
+      2. `source_row[mapping[target]]` — lookup from source data;
+      3. `_DEFAULT_UNMAPPED_VALUES[target]` — static fallback.
+    """
+    literals = literals or {}
     wb = Workbook()
     ws = wb.active
     ws.title = "Sheet1"
@@ -53,6 +61,14 @@ def build_xlsx(
 
     for row_num, row_data in enumerate(source_rows, start=2):
         for col_idx, target in enumerate(target_columns, start=1):
+            literal = literals.get(target)
+            if literal:
+                value = literal
+                if target in PRICE_COLUMNS:
+                    value = normalize_price(value)
+                ws.cell(row=row_num, column=col_idx, value=value)
+                continue
+
             src_col = (mapping.get(target) or "").strip()
             if not src_col:
                 default = _DEFAULT_UNMAPPED_VALUES.get(target)
@@ -64,7 +80,6 @@ def build_xlsx(
                 continue
             raw = row_data[h_idx]
             value, url = _split_value_url(raw)
-            # Normalize price
             if target in PRICE_COLUMNS:
                 value = normalize_price(value)
             cell = ws.cell(row=row_num, column=col_idx, value=value)

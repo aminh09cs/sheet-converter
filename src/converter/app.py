@@ -46,6 +46,7 @@ def _coerce_project_type(raw: str | None) -> ProjectType:
 
 
 _MAP_RE = re.compile(r"^map\[(\d+)\]\[(.+)\]$")
+_LITERAL_RE = re.compile(r"^literal\[(\d+)\]\[(.+)\]$")
 
 
 def _extract_mappings(form_items: list[tuple[str, str]]) -> dict[int, dict[str, str]]:
@@ -57,6 +58,17 @@ def _extract_mappings(form_items: list[tuple[str, str]]) -> dict[int, dict[str, 
             target = match.group(2)
             mappings.setdefault(idx, {})[target] = (value or "").strip()
     return mappings
+
+
+def _extract_literals(form_items: list[tuple[str, str]]) -> dict[int, dict[str, str]]:
+    literals: dict[int, dict[str, str]] = {}
+    for key, value in form_items:
+        match = _LITERAL_RE.match(key)
+        if match:
+            idx = int(match.group(1))
+            target = match.group(2)
+            literals.setdefault(idx, {})[target] = (value or "").strip()
+    return literals
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -100,6 +112,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             oauth_configured=settings.is_oauth_configured,
         )
         return _render(request, view)
+
+    @app.get("/load", response_model=None)
+    def load_get(request: Request):
+        # User refreshed the page after submitting — redirect to home.
+        return RedirectResponse("/", status_code=303)
 
     @app.post("/load", response_class=HTMLResponse)
     async def load(request: Request) -> HTMLResponse:
@@ -206,6 +223,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if block < 1 or block > len(raw_blocks):
             return Response(f"Block {block} không tồn tại", status_code=400)
 
+        literals = _extract_literals([(k, str(v)) for k, v in form.multi_items()])
+        block_literals = literals.get(block, {})
+
         header, data = raw_blocks[block - 1]
         block_mapping = mappings.get(block, {})
         targets = target_columns(project_type)
@@ -220,18 +240,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for idx, row in enumerate(data, start=1):
             out: list[str] = []
             for tgt in targets:
-                src = (block_mapping.get(tgt) or "").strip()
-                if not src:
-                    value = ""
+                literal = block_literals.get(tgt)
+                if literal:
+                    value = literal
                 else:
-                    h_idx = header_index.get(src)
-                    value = row[h_idx] if (h_idx is not None and h_idx < len(row)) else ""
+                    src = (block_mapping.get(tgt) or "").strip()
+                    if not src:
+                        value = ""
+                    else:
+                        h_idx = header_index.get(src)
+                        value = row[h_idx] if (h_idx is not None and h_idx < len(row)) else ""
                 if tgt in PRICE_COLUMNS:
                     value = normalize_price(value)
                 out.append(value)
             print(f"  [{idx}] {out}")
 
-        xlsx_bytes = sheets.build_xlsx(header, data, targets, block_mapping)
+        xlsx_bytes = sheets.build_xlsx(header, data, targets, block_mapping, block_literals)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = "cao_tang" if project_type == ProjectType.HIGH_RISE else "thap_tang"
         filename = f"salepro_{suffix}_block{block}_{timestamp}.xlsx"

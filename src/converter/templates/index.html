@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Sheet Converter</title>
     <link rel="icon" type="image/png" href="https://salepro.com/media/logos/salepro/favicon.png">
-    <link rel="stylesheet" href="/static/style.css?v=11">
+    <link rel="stylesheet" href="/static/style.css?v=12">
 </head>
 <body>
     <div class="page">
@@ -180,6 +180,18 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="partnerModal" hidden>
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="partnerModalTitle">
+            <h3 class="modal-title" id="partnerModalTitle">Cần nhập Đối tác</h3>
+            <p class="modal-text">Bảng nguồn không có cột nào được map cho <b>Đối tác</b>. Nhập giá trị áp dụng cho tất cả rows trong block này:</p>
+            <input type="text" id="partnerInput" class="modal-input" placeholder="Vd: VinHomes Saigon" required>
+            <div class="modal-actions">
+                <button type="button" id="partnerCancel" class="btn-ghost">Hủy</button>
+                <button type="button" id="partnerSubmit" class="btn-primary">Submit & Export</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const loadingOverlay = document.getElementById('loadingOverlay');
         function showLoading() {
@@ -240,37 +252,82 @@
             }
         }
 
-        document.querySelectorAll('.btn-export').forEach((btn) => {
-            btn.addEventListener('click', async () => {
-                const blockIdx = btn.dataset.block;
-                showLoading();
-                try {
-                    const formData = new FormData(mainForm);
-                    const resp = await fetch('/export?block=' + encodeURIComponent(blockIdx), {
-                        method: 'POST',
-                        body: formData,
-                    });
-                    if (!resp.ok) {
-                        const msg = await resp.text();
-                        throw new Error(msg || 'Export thất bại');
-                    }
-                    const disposition = resp.headers.get('Content-Disposition') || '';
-                    const match = disposition.match(/filename="?([^"]+)"?/);
-                    const filename = match ? match[1] : 'export.xlsx';
-                    const blob = await resp.blob();
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    URL.revokeObjectURL(url);
-                } catch (err) {
-                    alert('Lỗi khi tạo file: ' + err.message);
-                } finally {
-                    hideLoading();
+        async function doExport(blockIdx, literals) {
+            showLoading();
+            try {
+                const formData = new FormData(mainForm);
+                for (const [target, value] of Object.entries(literals || {})) {
+                    formData.append(`literal[${blockIdx}][${target}]`, value);
                 }
+                const resp = await fetch('/export?block=' + encodeURIComponent(blockIdx), {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (!resp.ok) {
+                    const msg = await resp.text();
+                    throw new Error(msg || 'Export thất bại');
+                }
+                const disposition = resp.headers.get('Content-Disposition') || '';
+                const match = disposition.match(/filename="?([^"]+)"?/);
+                const filename = match ? match[1] : 'export.xlsx';
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                alert('Lỗi khi tạo file: ' + err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Modal yêu cầu nhập Đối tác nếu admin chưa map source column.
+        const partnerModal = document.getElementById('partnerModal');
+        const partnerInput = document.getElementById('partnerInput');
+        const partnerSubmit = document.getElementById('partnerSubmit');
+        const partnerCancel = document.getElementById('partnerCancel');
+        let pendingExportBlock = null;
+
+        function openPartnerModal(blockIdx) {
+            pendingExportBlock = blockIdx;
+            partnerInput.value = '';
+            partnerModal.hidden = false;
+            setTimeout(() => partnerInput.focus(), 50);
+        }
+        function closePartnerModal() {
+            pendingExportBlock = null;
+            partnerModal.hidden = true;
+        }
+        partnerCancel?.addEventListener('click', closePartnerModal);
+        partnerModal?.addEventListener('click', (e) => {
+            if (e.target === partnerModal) closePartnerModal();
+        });
+        partnerInput?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); partnerSubmit.click(); }
+            if (e.key === 'Escape') closePartnerModal();
+        });
+        partnerSubmit?.addEventListener('click', () => {
+            const value = partnerInput.value.trim();
+            if (!value) { partnerInput.focus(); return; }
+            const blockIdx = pendingExportBlock;
+            closePartnerModal();
+            doExport(blockIdx, { 'Đối tác': value });
+        });
+
+        document.querySelectorAll('.btn-export').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const blockIdx = btn.dataset.block;
+                const partnerField = document.querySelector(`input[name="map[${blockIdx}][Đối tác]"]`);
+                if (partnerField && !partnerField.value.trim()) {
+                    openPartnerModal(blockIdx);
+                    return;
+                }
+                doExport(blockIdx, {});
             });
         });
 
