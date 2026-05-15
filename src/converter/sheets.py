@@ -10,6 +10,8 @@ from googleapiclient.errors import HttpError
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from converter.prices import PRICE_COLUMNS, normalize_price
+
 if TYPE_CHECKING:
     from google.oauth2.credentials import Credentials
 
@@ -62,6 +64,9 @@ def build_xlsx(
                 continue
             raw = row_data[h_idx]
             value, url = _split_value_url(raw)
+            # Normalize price
+            if target in PRICE_COLUMNS:
+                value = normalize_price(value)
             cell = ws.cell(row=row_num, column=col_idx, value=value)
             if url:
                 cell.hyperlink = url

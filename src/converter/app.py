@@ -210,6 +210,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         block_mapping = mappings.get(block, {})
         targets = target_columns(project_type)
 
+        from converter.prices import PRICE_COLUMNS, normalize_price
+
+        print(
+            f"=== Data sẽ thành xlsx · block {block} · {project_type.value} · {len(data)} rows ==="
+        )
+        print(list(targets))
+        header_index = {col: i for i, col in enumerate(header)}
+        for idx, row in enumerate(data, start=1):
+            out: list[str] = []
+            for tgt in targets:
+                src = (block_mapping.get(tgt) or "").strip()
+                if not src:
+                    value = ""
+                else:
+                    h_idx = header_index.get(src)
+                    value = row[h_idx] if (h_idx is not None and h_idx < len(row)) else ""
+                if tgt in PRICE_COLUMNS:
+                    value = normalize_price(value)
+                out.append(value)
+            print(f"  [{idx}] {out}")
+
         xlsx_bytes = sheets.build_xlsx(header, data, targets, block_mapping)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = "cao_tang" if project_type == ProjectType.HIGH_RISE else "thap_tang"
