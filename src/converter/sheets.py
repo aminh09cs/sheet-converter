@@ -18,7 +18,7 @@ _HYPERLINK_SEP = " → "
 
 # Targets that get a literal fallback value when admin doesn't map a source column.
 _DEFAULT_UNMAPPED_VALUES = {
-    "Trạng thái căn hộ": "Thu hồi",
+    "Trạng thái căn hộ": "Công khai",
 }
 
 
