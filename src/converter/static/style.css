@@ -591,26 +591,31 @@ body {
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-md);
     position: relative;
-    overflow: hidden;
 }
 
-.block-section::before {
-    content: "";
-    position: absolute;
+/* Combined sticky head — block summary (badge + title + meta) above chip row */
+.block-sticky-head {
+    position: sticky;
     top: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: var(--gradient-primary);
-    opacity: 0.9;
+    z-index: 5;
+    background: var(--color-surface);
+    margin: calc(var(--space-6) * -1);
+    margin-bottom: 0;
+    padding: var(--space-4) var(--space-6);
+    border-bottom: 1px solid var(--color-border);
+    border-top-left-radius: var(--radius-xl);
+    border-top-right-radius: var(--radius-xl);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    box-shadow: 0 4px 8px -6px rgb(15 23 42 / 0.1);
 }
 
-.block-header {
+.block-summary {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
-    padding-bottom: var(--space-4);
-    border-bottom: 1px solid var(--color-border);
+    gap: var(--space-3);
+    flex-wrap: wrap;
 }
 
 .block-footer {
@@ -639,12 +644,6 @@ body {
     flex-shrink: 0;
 }
 
-.block-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
 .block-title {
     font-size: var(--font-lg);
     font-weight: 700;
@@ -669,60 +668,22 @@ body {
     color: var(--color-text-soft);
 }
 
-/* ───── Hint box (source chips) ───── */
-.hint-box {
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: var(--space-4);
-    background: var(--color-surface-2);
-}
-
-.hint-box summary {
-    cursor: pointer;
-    list-style: none;
-    user-select: none;
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.hint-box summary::before {
-    content: "▸";
-    color: var(--color-text-soft);
-    transition: transform var(--transition);
-    font-size: var(--font-xs);
-}
-
-.hint-box[open] summary::before { transform: rotate(90deg); }
-
-.hint-summary-label {
-    font-weight: 600;
-    color: var(--color-text);
-    font-size: var(--font-sm);
-}
-
-.hint-summary-count {
-    display: inline-grid;
-    place-items: center;
-    min-width: 22px;
-    height: 22px;
-    padding: 0 var(--space-2);
-    background: var(--color-primary-soft);
-    color: var(--color-primary);
-    border-radius: var(--radius-pill);
-    font-size: var(--font-xs);
-    font-weight: 700;
-}
-
+/* ───── Chip row (inside sticky head) ───── */
 .chip-row {
-    margin-top: var(--space-4);
-    padding-top: var(--space-4);
-    border-top: 1px dashed var(--color-border);
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-    align-items: center;
+    align-items: flex-start;
     justify-content: flex-start;
+    max-height: 120px;
+    overflow-y: auto;
+    padding-right: var(--space-2);
+}
+
+.chip-row::-webkit-scrollbar { width: 6px; }
+.chip-row::-webkit-scrollbar-thumb {
+    background: var(--color-border-hover);
+    border-radius: 3px;
 }
 
 /* ───── Chip ───── */

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Sheet Converter</title>
     <link rel="icon" type="image/png" href="https://salepro.com/media/logos/salepro/favicon.png">
-    <link rel="stylesheet" href="/static/style.css?v=9">
+    <link rel="stylesheet" href="/static/style.css?v=11">
 </head>
 <body>
     <div class="page">
@@ -80,27 +80,21 @@
 
             {% for block in view.blocks %}
             <section class="block-section" data-block="{{ block.index }}">
-                <header class="block-header">
-                    <span class="block-badge">{{ block.index }}</span>
-                    <div class="block-info">
+                <header class="block-sticky-head">
+                    <div class="block-summary">
+                        <span class="block-badge">{{ block.index }}</span>
                         <span class="block-title">{% if view.blocks|length > 1 %}Bảng nguồn {{ block.index }}{% else %}Bảng nguồn{% endif %}</span>
                         <span class="block-meta">
+                            <span class="block-stat-sep">·</span>
                             <span class="block-stat"><b>{{ block.header|length }}</b> cột</span>
-                            <span class="block-stat-sep"> - </span>
+                            <span class="block-stat-sep">·</span>
                             <span class="block-stat"><b>{{ block.data_count }}</b> dòng data</span>
                         </span>
                     </div>
-                </header>
-
-                <details class="hint-box" open>
-                    <summary>
-                        <span class="hint-summary-label">Các cột có sẵn</span>
-                        <span class="hint-summary-count">{{ block.header|length }}</span>
-                    </summary>
                     <div class="chip-row">
                         {% for col in block.header %}<span class="chip chip-draggable" draggable="true" data-col="{{ col }}" data-block="{{ block.index }}">{{ col }}</span>{% endfor %}
                     </div>
-                </details>
+                </header>
 
                 <div class="grid-header">
                     <div>Data từ sàn</div>
