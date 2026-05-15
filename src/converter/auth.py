@@ -1,17 +1,12 @@
 from __future__ import annotations
 
-import json
 import time
-from typing import TYPE_CHECKING
 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 from converter.config import OAUTH_SCOPES, Settings
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _FLOW_TTL_SECONDS = 600
 _pending_flows: dict[str, tuple[str, float]] = {}
@@ -74,41 +69,17 @@ def get_user_email(credentials: Credentials) -> str:
     return email
 
 
-class TokenStore:
-    def __init__(self, path: Path) -> None:
-        # Lazy: don't touch filesystem on init — serverless hosts (Vercel) only allow
-        # writes to /tmp, so we defer dir creation until the first save() call.
-        self.path = path
+def credentials_to_dict(credentials: Credentials) -> dict:
+    """Serialize Credentials to a JSON-safe dict for storing in the session cookie."""
+    return {
+        "token": credentials.token,
+        "refresh_token": credentials.refresh_token,
+        "token_uri": credentials.token_uri,
+        "client_id": credentials.client_id,
+        "client_secret": credentials.client_secret,
+        "scopes": list(credentials.scopes or []),
+    }
 
-    def _read(self) -> dict[str, dict]:
-        if not self.path.exists():
-            return {}
-        raw = self.path.read_text(encoding="utf-8") or "{}"
-        return json.loads(raw)
 
-    def _write(self, data: dict[str, dict]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-
-    def save(self, email: str, credentials: Credentials) -> None:
-        data = self._read()
-        data[email] = {
-            "token": credentials.token,
-            "refresh_token": credentials.refresh_token,
-            "token_uri": credentials.token_uri,
-            "client_id": credentials.client_id,
-            "client_secret": credentials.client_secret,
-            "scopes": list(credentials.scopes or []),
-        }
-        self._write(data)
-
-    def load(self, email: str) -> Credentials | None:
-        record = self._read().get(email)
-        if not record:
-            return None
-        return Credentials(**record)
-
-    def delete(self, email: str) -> None:
-        data = self._read()
-        data.pop(email, None)
-        self._write(data)
+def credentials_from_dict(data: dict) -> Credentials:
+    return Credentials(**data)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,7 +31,9 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     oauth_redirect_uri: str = "http://127.0.0.1:8001/auth/callback"
     session_secret: str = "dev-secret-change-in-production"
-    token_store_path: Path = Path.home() / ".sheet-converter" / "tokens.json"
+    # Session cookie lifetime in seconds (default 1 year). Cookie persists across
+    # Vercel cold starts and browser restarts; cleared only on explicit logout.
+    session_max_age: int = 365 * 24 * 60 * 60
 
     @property
     def is_oauth_configured(self) -> bool:

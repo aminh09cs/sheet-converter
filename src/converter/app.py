@@ -73,10 +73,16 @@ def _extract_literals(form_items: list[tuple[str, str]]) -> dict[int, dict[str, 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    token_store = auth.TokenStore(settings.token_store_path)
 
     app = FastAPI(title="Sheet Converter")
-    app.add_middleware(SessionMiddleware, secret_key=settings.session_secret)
+    # Session cookie persists for ~1 year so the login survives Vercel cold starts.
+    # Cleared only when user clicks "Đăng xuất" or manually deletes cookie.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret,
+        max_age=settings.session_max_age,
+        same_site="lax",
+    )
     app.mount(
         "/static",
         StaticFiles(directory=str(PACKAGE_DIR / "static")),
@@ -86,8 +92,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def _current_email(request: Request) -> str | None:
         return request.session.get("user_email")
 
-    def _current_credentials(email: str | None):
-        return token_store.load(email) if email else None
+    def _current_credentials(request: Request):
+        cred_dict = request.session.get("credentials")
+        if not cred_dict:
+            return None
+        return auth.credentials_from_dict(cred_dict)
+
+    def _persist_credentials(request: Request, credentials) -> None:
+        # google-auth refreshes the access_token in place on API calls; save the
+        # refreshed credentials back into the session cookie so the next request
+        # picks up the new token instead of re-refreshing.
+        request.session["credentials"] = auth.credentials_to_dict(credentials)
 
     def _render(request: Request, view: IndexView) -> HTMLResponse:
         return _templates.TemplateResponse(request, "index.html", {"view": view})
@@ -128,7 +143,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         link = (form.get("link") or "").strip()
         project_type = _coerce_project_type(form.get("project_type"))
         mappings = _extract_mappings([(k, str(v)) for k, v in form.multi_items()])
-        credentials = _current_credentials(email)
+        credentials = _current_credentials(request)
 
         blocks_view: list[BlockView] = []
         error: str | None = None
@@ -138,6 +153,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif link:
             try:
                 all_rows = sheets.read_all_rows(link, credentials)
+                _persist_credentials(request, credentials)
                 raw_blocks = sheets.split_into_blocks(all_rows)
                 total_data = sum(len(d) for _, d in raw_blocks)
                 print(f"=== {len(raw_blocks)} block, {total_data} data rows ===")
@@ -190,8 +206,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             credentials = auth.exchange_code(settings, code, state)
             email = auth.get_user_email(credentials)
-            token_store.save(email, credentials)
             request.session["user_email"] = email
+            request.session["credentials"] = auth.credentials_to_dict(credentials)
         except Exception as exc:
             return HTMLResponse(f"OAuth error: {exc}", status_code=500)
         return RedirectResponse("/", status_code=303)
@@ -207,7 +223,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         block = int(request.query_params.get("block", "1") or 1)
         project_type = _coerce_project_type(form.get("project_type"))
         mappings = _extract_mappings([(k, str(v)) for k, v in form.multi_items()])
-        credentials = _current_credentials(email)
+        credentials = _current_credentials(request)
 
         if not link:
             return Response("Thiếu link", status_code=400)
@@ -216,6 +232,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         try:
             all_rows = sheets.read_all_rows(link, credentials)
+            _persist_credentials(request, credentials)
             raw_blocks = sheets.split_into_blocks(all_rows)
         except (sheets.SheetURLError, sheets.SheetReadError) as exc:
             return Response(str(exc), status_code=400)
@@ -302,7 +319,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/auth/logout")
     def logout(request: Request):
-        request.session.pop("user_email", None)
+        request.session.clear()
         return RedirectResponse("/", status_code=303)
 
     return app
