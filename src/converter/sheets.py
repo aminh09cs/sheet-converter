@@ -10,10 +10,14 @@ from googleapiclient.errors import HttpError
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from converter.directions import DIRECTION_COLUMN, normalize_direction
+from converter.housing_types import HOUSING_TYPE_COLUMN, normalize_housing_type
 from converter.prices import PRICE_COLUMNS, normalize_price
 
 if TYPE_CHECKING:
     from google.oauth2.credentials import Credentials
+
+    from converter.schema import ProjectType
 
 
 _HYPERLINK_SEP = " → "
@@ -38,6 +42,7 @@ def build_xlsx(
     target_columns: tuple[str, ...],
     mapping: dict[str, str],
     literals: dict[str, str] | None = None,
+    project_type: ProjectType | None = None,
 ) -> bytes:
     """Generate xlsx where columns follow target_columns.
 
@@ -66,6 +71,10 @@ def build_xlsx(
                 value = literal
                 if target in PRICE_COLUMNS:
                     value = normalize_price(value)
+                elif target == HOUSING_TYPE_COLUMN and project_type is not None:
+                    value = normalize_housing_type(value, project_type)
+                elif target == DIRECTION_COLUMN:
+                    value = normalize_direction(value)
                 ws.cell(row=row_num, column=col_idx, value=value)
                 continue
 
@@ -82,6 +91,10 @@ def build_xlsx(
             value, url = _split_value_url(raw)
             if target in PRICE_COLUMNS:
                 value = normalize_price(value)
+            elif target == HOUSING_TYPE_COLUMN and project_type is not None:
+                value = normalize_housing_type(value, project_type)
+            elif target == DIRECTION_COLUMN:
+                value = normalize_direction(value)
             cell = ws.cell(row=row_num, column=col_idx, value=value)
             if url:
                 cell.hyperlink = url

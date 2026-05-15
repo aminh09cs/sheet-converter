@@ -247,6 +247,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         block_mapping = mappings.get(block, {})
         targets = target_columns(project_type)
 
+        from converter.directions import DIRECTION_COLUMN, normalize_direction
+        from converter.housing_types import HOUSING_TYPE_COLUMN, normalize_housing_type
         from converter.prices import PRICE_COLUMNS, normalize_price
 
         print(
@@ -269,10 +271,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         value = row[h_idx] if (h_idx is not None and h_idx < len(row)) else ""
                 if tgt in PRICE_COLUMNS:
                     value = normalize_price(value)
+                elif tgt == HOUSING_TYPE_COLUMN:
+                    value = normalize_housing_type(value, project_type)
+                elif tgt == DIRECTION_COLUMN:
+                    value = normalize_direction(value)
                 out.append(value)
             print(f"  [{idx}] {out}")
 
-        xlsx_bytes = sheets.build_xlsx(header, data, targets, block_mapping, block_literals)
+        xlsx_bytes = sheets.build_xlsx(
+            header, data, targets, block_mapping, block_literals, project_type
+        )
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = "cao_tang" if project_type == ProjectType.HIGH_RISE else "thap_tang"
         filename = f"salepro_{suffix}_block{block}_{timestamp}.xlsx"
