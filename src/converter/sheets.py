@@ -99,6 +99,10 @@ def build_xlsx(
                 continue
             raw = row_data[h_idx]
             value, url = _split_value_url(raw)
+            # Link-only cells (no display text): show the URL itself so Excel
+            # renders a visible clickable link instead of an empty cell.
+            if url and not value:
+                value = url
             if target in PRICE_COLUMNS:
                 value = normalize_price(value)
             elif target == HOUSING_TYPE_COLUMN and project_type is not None:
@@ -400,7 +404,9 @@ def _extract_visible_rows(api_result: dict) -> list[list[str]]:
         for cell in visible_cells:
             value = cell.get("formattedValue") or ""
             url = _resolve_cell_url(cell)
-            cells.append(url if url else value)
+            # Keep BOTH value and url so the unit-ID regex can still match the
+            # text portion (e.g. "BM3-26") even when the cell carries a hyperlink.
+            cells.append(f"{value}{_HYPERLINK_SEP}{url}" if url else value)
         # Trim trailing format-only cells (banding/borders) that have no value
         while cells and not cells[-1].strip():
             cells.pop()
