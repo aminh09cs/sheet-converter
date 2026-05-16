@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Sheet Converter</title>
     <link rel="icon" type="image/png" href="https://salepro.com/media/logos/salepro/favicon.png">
-    <link rel="stylesheet" href="/static/style.css?v=12">
+    <link rel="stylesheet" href="/static/style.css?v=13">
 </head>
 <body>
     <div class="page">
@@ -193,6 +193,12 @@
     </div>
 
     <script>
+        // Rewrite URL after POST /load so a browser refresh hits GET / (clean state),
+        // instead of re-POSTing the previous form and re-rendering with data.
+        if (window.location.pathname === '/load') {
+            history.replaceState({}, '', '/');
+        }
+
         const loadingOverlay = document.getElementById('loadingOverlay');
         function showLoading() {
             if (loadingOverlay) {
@@ -343,28 +349,8 @@
             zone.classList.toggle('drop-zone-filled', !!value);
         }
 
-        function syncUsedChips() {
-            const usedByBlock = {};
-            dropZones.forEach((zone) => {
-                const blk = zone.dataset.block;
-                if (!usedByBlock[blk]) usedByBlock[blk] = new Set();
-                const v = zone.querySelector('input[type=hidden]').value;
-                if (v) usedByBlock[blk].add(v);
-            });
-            chips.forEach((chip) => {
-                const set = usedByBlock[chip.dataset.block];
-                const isUsed = !!(set && set.has(chip.dataset.col));
-                chip.classList.toggle('chip-used', isUsed);
-                chip.draggable = !isUsed;
-            });
-        }
-
         chips.forEach((chip) => {
             chip.addEventListener('dragstart', (e) => {
-                if (chip.classList.contains('chip-used')) {
-                    e.preventDefault();
-                    return;
-                }
                 dragSourceBlock = chip.dataset.block;
                 e.dataTransfer.setData('text/plain', chip.dataset.col);
                 e.dataTransfer.effectAllowed = 'copy';
@@ -391,17 +377,13 @@
                 const col = e.dataTransfer.getData('text/plain');
                 if (col) {
                     setZoneValue(zone, col);
-                    syncUsedChips();
                 }
             });
             zone.querySelector('.drop-chip-clear').addEventListener('click', (e) => {
                 e.preventDefault();
                 setZoneValue(zone, '');
-                syncUsedChips();
             });
         });
-
-        syncUsedChips();
 
         // ───── Merge tab ─────
         const dropzone = document.getElementById('dropzone');
