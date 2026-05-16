@@ -391,14 +391,20 @@ def _extract_visible_rows(api_result: dict) -> list[list[str]]:
     rows = grid.get("rowData", [])
     visible: list[list[str]] = []
     for idx, row in enumerate(rows):
-        if idx < len(row_meta):
-            meta = row_meta[idx]
-            if meta.get("hiddenByUser") or meta.get("hiddenByFilter"):
-                continue
+        meta = row_meta[idx] if idx < len(row_meta) else {}
+        preview = [(cell.get("formattedValue") or "").strip() for cell in row.get("values", [])]
+        row_has_code = any(_CODE_PATTERN_RE.match(c) for c in preview if c)
+        # Skip hidden rows only when they look like data (have Mã căn code).
+        # Header rows can also be marked hidden — keep them so blocks form.
+        if (meta.get("hiddenByUser") or meta.get("hiddenByFilter")) and row_has_code:
+            continue
         visible_cells = [
             cell for i, cell in enumerate(row.get("values", [])) if i not in hidden_cols
         ]
-        if any(_bg_hex(cell) == _EXCLUDED_BG_HEX for cell in visible_cells):
+        # Skip red-bg rows only when they're data (sold/locked unit). Header rows
+        # may have an individual red cell (e.g. styled "ĐÃ BÁN" column header)
+        # without actually being a sold-unit row — keep them.
+        if row_has_code and any(_bg_hex(cell) == _EXCLUDED_BG_HEX for cell in visible_cells):
             continue
         cells = []
         for cell in visible_cells:
