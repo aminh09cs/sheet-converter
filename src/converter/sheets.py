@@ -36,6 +36,16 @@ def _split_value_url(cell: str) -> tuple[str, str | None]:
     return cell, None
 
 
+def _norm_col_name(s: str) -> str:
+    """Collapse all whitespace (incl. CRLF from HTML form encoding) to single space.
+
+    HTML5 form submission converts in-value '\\n' to '\\r\\n', so a header like
+    'Giá TTS\\n(tạm tính)' read from Sheets won't match the mapping value coming
+    back from the browser. Normalising both sides on lookup avoids the mismatch.
+    """
+    return " ".join(s.split())
+
+
 def build_xlsx(
     source_header: list[str],
     source_rows: list[list[str]],
@@ -62,7 +72,7 @@ def build_xlsx(
         cell = ws.cell(row=1, column=col_idx, value=target)
         cell.font = bold
 
-    header_index = {col: i for i, col in enumerate(source_header)}
+    header_index = {_norm_col_name(col): i for i, col in enumerate(source_header)}
 
     for row_num, row_data in enumerate(source_rows, start=2):
         for col_idx, target in enumerate(target_columns, start=1):
@@ -78,7 +88,7 @@ def build_xlsx(
                 ws.cell(row=row_num, column=col_idx, value=value)
                 continue
 
-            src_col = (mapping.get(target) or "").strip()
+            src_col = _norm_col_name(mapping.get(target) or "")
             if not src_col:
                 default = _DEFAULT_UNMAPPED_VALUES.get(target)
                 if default is not None:

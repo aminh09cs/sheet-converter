@@ -255,7 +255,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"=== Data sẽ thành xlsx · block {block} · {project_type.value} · {len(data)} rows ==="
         )
         print(list(targets))
-        header_index = {col: i for i, col in enumerate(header)}
+        header_index = {sheets._norm_col_name(col): i for i, col in enumerate(header)}
         for idx, row in enumerate(data, start=1):
             out: list[str] = []
             for tgt in targets:
@@ -263,7 +263,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 if literal:
                     value = literal
                 else:
-                    src = (block_mapping.get(tgt) or "").strip()
+                    src = sheets._norm_col_name(block_mapping.get(tgt) or "")
                     if not src:
                         value = ""
                     else:
