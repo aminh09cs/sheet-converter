@@ -99,9 +99,10 @@ def build_xlsx(
                 continue
             raw = row_data[h_idx]
             value, url = _split_value_url(raw)
-            # Link-only cells (no display text): show the URL itself so Excel
-            # renders a visible clickable link instead of an empty cell.
-            if url and not value:
+            # For "Link *" target columns: always display the URL as text. Source
+            # cells like "TĐ11-56 → https://..." should write just the URL.
+            # For other targets: only fall back to URL when there's no display text.
+            if url and (target.startswith("Link ") or not value):
                 value = url
             if target in PRICE_COLUMNS:
                 value = normalize_price(value)
