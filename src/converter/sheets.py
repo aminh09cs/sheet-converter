@@ -244,7 +244,10 @@ def split_into_blocks(
                     main = _merge_header_rows(main, cand)
                     next_i += 1
 
-            cur_header = [c.strip() for c in main if c.strip()]
+            # Keep header positionally aligned with data rows — don't drop empty
+            # cells (e.g. leading blank columns A/B in some sheets), otherwise
+            # header_index → row_data lookup gets off-by-N.
+            cur_header = [c.strip() for c in main]
             cur_data = []
             i = next_i
             continue

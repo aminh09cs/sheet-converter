@@ -86,13 +86,13 @@
                         <span class="block-title">{% if view.blocks|length > 1 %}Bảng nguồn {{ block.index }}{% else %}Bảng nguồn{% endif %}</span>
                         <span class="block-meta">
                             <span class="block-stat-sep">·</span>
-                            <span class="block-stat"><b>{{ block.header|length }}</b> cột</span>
+                            <span class="block-stat"><b>{{ block.header|select|list|length }}</b> cột</span>
                             <span class="block-stat-sep">·</span>
                             <span class="block-stat"><b>{{ block.data_count }}</b> dòng data</span>
                         </span>
                     </div>
                     <div class="chip-row">
-                        {% for col in block.header %}<span class="chip chip-draggable" draggable="true" data-col="{{ col }}" data-block="{{ block.index }}">{{ col }}</span>{% endfor %}
+                        {% for col in block.header if col %}<span class="chip chip-draggable" draggable="true" data-col="{{ col }}" data-block="{{ block.index }}">{{ col }}</span>{% endfor %}
                     </div>
                 </header>
 
