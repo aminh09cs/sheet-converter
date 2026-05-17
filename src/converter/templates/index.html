@@ -59,6 +59,7 @@
             </div>
 
             <section class="link-row">
+                <input type="hidden" name="mapping_sheet_id" value="{{ view.sheet_id }}">
                 <label for="link" class="field-label">Link import</label>
                 <input id="link" name="link" type="url" class="text-input"
                        placeholder="https://docs.google.com/spreadsheets/d/..."
@@ -121,6 +122,14 @@
                 </main>
 
                 <div class="block-footer">
+                    <button type="button" class="btn-ghost btn-save-template" data-block="{{ block.index }}">
+                        <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                            <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                            <polyline points="7 3 7 8 15 8"></polyline>
+                        </svg>
+                        <span>Lưu mapping</span>
+                    </button>
                     <button type="button" class="btn-primary btn-export" data-block="{{ block.index }}">
                         <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -334,6 +343,59 @@
                     return;
                 }
                 doExport(blockIdx, {});
+            });
+        });
+
+        // ───── Lưu mapping template ─────
+        function extractSheetId(url) {
+            const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+            return m ? m[1] : null;
+        }
+
+        document.querySelectorAll('.btn-save-template').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+                const blockIdx = btn.dataset.block;
+                const sourceUrl = linkInput?.value?.trim() || '';
+                const sheetId = extractSheetId(sourceUrl);
+                if (!sheetId) {
+                    alert('URL không hợp lệ');
+                    return;
+                }
+                const columnMap = {};
+                document
+                    .querySelectorAll(`input[name^="map[${blockIdx}]"]`)
+                    .forEach((input) => {
+                        const m = input.name.match(/^map\[\d+\]\[(.+)\]$/);
+                        const value = (input.value || '').trim();
+                        if (m && value) columnMap[m[1]] = value;
+                    });
+                if (Object.keys(columnMap).length === 0) {
+                    alert('Chưa map cột nào để lưu');
+                    return;
+                }
+                btn.disabled = true;
+                try {
+                    const resp = await fetch(`/templates/${encodeURIComponent(sheetId)}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            source_url: sourceUrl,
+                            column_map: columnMap,
+                        }),
+                    });
+                    if (!resp.ok) {
+                        const msg = await resp.text();
+                        throw new Error(msg || 'Lưu thất bại');
+                    }
+                    btn.querySelector('span').textContent = 'Đã lưu ✓';
+                    setTimeout(() => {
+                        btn.querySelector('span').textContent = 'Lưu mapping';
+                    }, 2000);
+                } catch (err) {
+                    alert('Lỗi khi lưu: ' + err.message);
+                } finally {
+                    btn.disabled = false;
+                }
             });
         });
 

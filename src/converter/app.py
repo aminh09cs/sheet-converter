@@ -5,13 +5,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from converter import auth, merge, sheets
+from converter import auth, merge, sheets, templates
 from converter.config import Settings, get_settings
 from converter.schema import ProjectType, target_columns
 
@@ -33,6 +33,7 @@ class IndexView:
     target_columns: tuple[str, ...]
     user_email: str | None = None
     link: str = ""
+    sheet_id: str = ""
     blocks: list[BlockView] = field(default_factory=list)
     error: str | None = None
     oauth_configured: bool = True
@@ -145,6 +146,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         mappings = _extract_mappings([(k, str(v)) for k, v in form.multi_items()])
         credentials = _current_credentials(request)
 
+        # Determine the sheet_id of THIS submission.
+        current_sheet_id = ""
+        if link:
+            try:
+                current_sheet_id = sheets.parse_url(link).sheet_id
+            except sheets.SheetURLError:
+                current_sheet_id = ""
+
+        # If admin changed the link, drop stale mappings carried over from the
+        # previous sheet — they reference columns that may not exist in the new
+        # sheet's header. `mapping_sheet_id` is a hidden field set at last render.
+        prev_sheet_id = (form.get("mapping_sheet_id") or "").strip()
+        if prev_sheet_id and prev_sheet_id != current_sheet_id:
+            mappings = {}
+
         blocks_view: list[BlockView] = []
         error: str | None = None
 
@@ -157,18 +173,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raw_blocks = sheets.split_into_blocks(all_rows)
                 total_data = sum(len(d) for _, d in raw_blocks)
                 print(f"=== {len(raw_blocks)} block, {total_data} data rows ===")
+
+                # Try to auto-apply a saved template (matching by sheet_id). The
+                # form-submitted mapping wins if admin already dragged something.
+                saved_map: dict[str, str] = {}
+                try:
+                    ref = sheets.parse_url(link)
+                    sb = templates.get_supabase(settings)
+                    if sb is not None:
+                        found = templates.find_template(sb, ref.sheet_id)
+                        if found.found and found.column_map:
+                            saved_map = found.column_map
+                except Exception as exc:
+                    print(f"[templates] lookup failed: {exc}")
+
                 for block_idx, (header, data) in enumerate(raw_blocks, start=1):
                     print(f"--- Block {block_idx}: Header ({len(header)} cột) ---")
                     print(header)
                     print(f"--- Block {block_idx}: Data ({len(data)} dòng) ---")
                     for idx, row in enumerate(data, start=1):
                         print(f"  [{idx}] {row}")
+                    block_mapping = mappings.get(block_idx, {})
+                    if not block_mapping and saved_map:
+                        # Only apply saved mapping for source columns that still
+                        # exist in the current sheet header. Drop the rest.
+                        header_set = {sheets._norm_col_name(c) for c in header if c}
+                        block_mapping = {
+                            target: source
+                            for target, source in saved_map.items()
+                            if sheets._norm_col_name(source) in header_set
+                        }
                     blocks_view.append(
                         BlockView(
                             index=block_idx,
                             header=header,
                             data_count=len(data),
-                            mapping=mappings.get(block_idx, {}),
+                            mapping=block_mapping,
                         )
                     )
             except (sheets.SheetURLError, sheets.SheetReadError) as exc:
@@ -181,6 +221,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             target_columns=target_columns(project_type),
             user_email=email,
             link=link,
+            sheet_id=current_sheet_id,
             blocks=blocks_view,
             error=error,
             oauth_configured=settings.is_oauth_configured,
@@ -329,6 +370,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def logout(request: Request):
         request.session.clear()
         return RedirectResponse("/", status_code=303)
+
+    @app.put("/templates/{sheet_id}")
+    def upsert_template_route(
+        sheet_id: str,
+        payload: templates.TemplatePayload,
+        request: Request,
+    ):
+        if not _current_email(request):
+            return Response("Chưa đăng nhập", status_code=401)
+        sb = templates.get_supabase(settings)
+        if sb is None:
+            return Response("Supabase chưa được cấu hình", status_code=500)
+        try:
+            templates.upsert_template(sb, sheet_id, payload)
+        except Exception as exc:
+            return Response(f"Lưu thất bại: {exc}", status_code=500)
+        return {"ok": True}
+
+    @app.get("/templates/{sheet_id}", response_model=templates.TemplateResponse)
+    def get_template_route(sheet_id: str, request: Request):
+        if not _current_email(request):
+            raise HTTPException(status_code=401, detail="Chưa đăng nhập")
+        sb = templates.get_supabase(settings)
+        if sb is None:
+            raise HTTPException(status_code=500, detail="Supabase chưa được cấu hình")
+        return templates.find_template(sb, sheet_id)
 
     return app
 
