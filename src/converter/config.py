@@ -6,6 +6,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 OAUTH_SCOPES: tuple[str, ...] = (
     "https://www.googleapis.com/auth/spreadsheets.readonly",
+    # Fallback path for xlsx files uploaded to Drive (not native Google Sheets).
+    "https://www.googleapis.com/auth/drive.readonly",
     "https://www.googleapis.com/auth/userinfo.email",
     "openid",
 )

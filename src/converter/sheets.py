@@ -10,6 +10,7 @@ from googleapiclient.errors import HttpError
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from converter import drive_xlsx
 from converter.directions import DIRECTION_COLUMN, normalize_direction
 from converter.housing_types import HOUSING_TYPE_COLUMN, normalize_housing_type
 from converter.prices import PRICE_COLUMNS, normalize_price
@@ -338,6 +339,9 @@ def read_source_columns(
             .execute()
         )
     except HttpError as exc:
+        if drive_xlsx.is_office_file_error(exc):
+            visible = _fallback_drive_rows(ref.sheet_id, credentials)
+            return [cell for cell in detect_header(visible) if cell]
         raise SheetReadError(_format_api_error(exc)) from exc
 
     visible = _extract_visible_rows(grid)
@@ -360,9 +364,23 @@ def read_all_rows(url: str, credentials: Credentials) -> list[list[str]]:
             .execute()
         )
     except HttpError as exc:
+        if drive_xlsx.is_office_file_error(exc):
+            return _fallback_drive_rows(ref.sheet_id, credentials)
         raise SheetReadError(_format_api_error(exc)) from exc
 
     return _extract_visible_rows(grid)
+
+
+def _fallback_drive_rows(file_id: str, credentials: Credentials) -> list[list[str]]:
+    """Download the file via Drive API and parse as xlsx (uploaded Office files)."""
+    try:
+        return drive_xlsx.read_xlsx_via_drive(file_id, credentials)
+    except HttpError as exc:
+        if exc.resp is not None and exc.resp.status == 403:
+            raise SheetReadError(
+                "Cần cấp quyền Drive để đọc file Excel upload. Đăng xuất rồi đăng nhập lại."
+            ) from exc
+        raise SheetReadError(_format_api_error(exc)) from exc
 
 
 def _resolve_sheet_name(service, sheet_id: str, gid: int) -> str:
