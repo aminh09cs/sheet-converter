@@ -62,25 +62,33 @@ def get_supabase(settings: Settings) -> Client | None:
 
 
 # ─── Service functions ──────────────────────────────────────────────────
-def upsert_template(client: Client, sheet_id: str, gid: int, payload: TemplatePayload) -> None:
-    """Insert or replace the template row keyed by (sheet_id, gid)."""
+def upsert_template(
+    client: Client,
+    sheet_id: str,
+    gid: int,
+    block_idx: int,
+    payload: TemplatePayload,
+) -> None:
+    """Insert or replace the template row keyed by (sheet_id, gid, block_idx)."""
     client.table(_TABLE).upsert(
         {
             "sheet_id": sheet_id,
             "gid": gid,
+            "block_idx": block_idx,
             "source_url": payload.source_url,
             "column_map": payload.column_map,
         }
     ).execute()
 
 
-def find_template(client: Client, sheet_id: str, gid: int) -> TemplateResponse:
-    """Look up template by (sheet_id, gid). Always returns a TemplateResponse."""
+def find_template(client: Client, sheet_id: str, gid: int, block_idx: int) -> TemplateResponse:
+    """Look up template by (sheet_id, gid, block_idx). Always returns a TemplateResponse."""
     res = (
         client.table(_TABLE)
         .select("source_url, column_map")
         .eq("sheet_id", sheet_id)
         .eq("gid", gid)
+        .eq("block_idx", block_idx)
         .limit(1)
         .execute()
     )
@@ -93,3 +101,19 @@ def find_template(client: Client, sheet_id: str, gid: int) -> TemplateResponse:
         source_url=row["source_url"],
         column_map=row["column_map"],
     )
+
+
+def find_templates_for_tab(client: Client, sheet_id: str, gid: int) -> dict[int, dict[str, str]]:
+    """Fetch all blocks' mappings for a tab in one query.
+
+    Returns {block_idx: column_map}. Used by /load to auto-apply per block.
+    """
+    res = (
+        client.table(_TABLE)
+        .select("block_idx, column_map")
+        .eq("sheet_id", sheet_id)
+        .eq("gid", gid)
+        .execute()
+    )
+    rows = res.data or []
+    return {row["block_idx"]: row["column_map"] for row in rows}

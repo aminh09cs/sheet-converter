@@ -380,7 +380,7 @@
                 }
                 btn.disabled = true;
                 try {
-                    const url = `/templates/${encodeURIComponent(ref.sheetId)}/${ref.gid}`;
+                    const url = `/templates/${encodeURIComponent(ref.sheetId)}/${ref.gid}/${blockIdx}`;
                     const resp = await fetch(url, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },

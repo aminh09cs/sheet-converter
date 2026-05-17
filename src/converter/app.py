@@ -183,16 +183,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 total_data = sum(len(d) for _, d in raw_blocks)
                 print(f"=== {len(raw_blocks)} block, {total_data} data rows ===")
 
-                # Try to auto-apply a saved template (matching by sheet_id+gid).
-                # The form-submitted mapping wins if admin already dragged
-                # something.
-                saved_map: dict[str, str] = {}
+                # Try to auto-apply saved templates per-block. The form-submitted
+                # mapping wins if admin already dragged something for that block.
+                saved_by_block: dict[int, dict[str, str]] = {}
                 try:
                     sb = templates.get_supabase(settings)
                     if sb is not None and current_sheet_id:
-                        found = templates.find_template(sb, current_sheet_id, current_gid)
-                        if found.found and found.column_map:
-                            saved_map = found.column_map
+                        saved_by_block = templates.find_templates_for_tab(
+                            sb, current_sheet_id, current_gid
+                        )
                 except Exception as exc:
                     print(f"[templates] lookup failed: {exc}")
 
@@ -203,13 +202,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     for idx, row in enumerate(data, start=1):
                         print(f"  [{idx}] {row}")
                     block_mapping = mappings.get(block_idx, {})
-                    if not block_mapping and saved_map:
+                    saved_for_block = saved_by_block.get(block_idx, {})
+                    if not block_mapping and saved_for_block:
                         # Only apply saved mapping for source columns that still
                         # exist in the current sheet header. Drop the rest.
                         header_set = {sheets._norm_col_name(c) for c in header if c}
                         block_mapping = {
                             target: source
-                            for target, source in saved_map.items()
+                            for target, source in saved_for_block.items()
                             if sheets._norm_col_name(source) in header_set
                         }
                     blocks_view.append(
@@ -380,10 +380,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request.session.clear()
         return RedirectResponse("/", status_code=303)
 
-    @app.put("/templates/{sheet_id}/{gid}")
+    @app.put("/templates/{sheet_id}/{gid}/{block_idx}")
     def upsert_template_route(
         sheet_id: str,
         gid: int,
+        block_idx: int,
         payload: templates.TemplatePayload,
         request: Request,
     ):
@@ -393,19 +394,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if sb is None:
             return Response("Supabase chưa được cấu hình", status_code=500)
         try:
-            templates.upsert_template(sb, sheet_id, gid, payload)
+            templates.upsert_template(sb, sheet_id, gid, block_idx, payload)
         except Exception as exc:
             return Response(f"Lưu thất bại: {exc}", status_code=500)
         return {"ok": True}
 
-    @app.get("/templates/{sheet_id}/{gid}", response_model=templates.TemplateResponse)
-    def get_template_route(sheet_id: str, gid: int, request: Request):
+    @app.get(
+        "/templates/{sheet_id}/{gid}/{block_idx}",
+        response_model=templates.TemplateResponse,
+    )
+    def get_template_route(sheet_id: str, gid: int, block_idx: int, request: Request):
         if not _current_email(request):
             raise HTTPException(status_code=401, detail="Chưa đăng nhập")
         sb = templates.get_supabase(settings)
         if sb is None:
             raise HTTPException(status_code=500, detail="Supabase chưa được cấu hình")
-        return templates.find_template(sb, sheet_id, gid)
+        return templates.find_template(sb, sheet_id, gid, block_idx)
 
     return app
 
