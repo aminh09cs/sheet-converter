@@ -62,23 +62,25 @@ def get_supabase(settings: Settings) -> Client | None:
 
 
 # ─── Service functions ──────────────────────────────────────────────────
-def upsert_template(client: Client, sheet_id: str, payload: TemplatePayload) -> None:
-    """Insert or replace the template row keyed by sheet_id."""
+def upsert_template(client: Client, sheet_id: str, gid: int, payload: TemplatePayload) -> None:
+    """Insert or replace the template row keyed by (sheet_id, gid)."""
     client.table(_TABLE).upsert(
         {
             "sheet_id": sheet_id,
+            "gid": gid,
             "source_url": payload.source_url,
             "column_map": payload.column_map,
         }
     ).execute()
 
 
-def find_template(client: Client, sheet_id: str) -> TemplateResponse:
-    """Look up template by sheet_id. Always returns a TemplateResponse."""
+def find_template(client: Client, sheet_id: str, gid: int) -> TemplateResponse:
+    """Look up template by (sheet_id, gid). Always returns a TemplateResponse."""
     res = (
         client.table(_TABLE)
         .select("source_url, column_map")
         .eq("sheet_id", sheet_id)
+        .eq("gid", gid)
         .limit(1)
         .execute()
     )

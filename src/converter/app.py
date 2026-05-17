@@ -33,7 +33,10 @@ class IndexView:
     target_columns: tuple[str, ...]
     user_email: str | None = None
     link: str = ""
-    sheet_id: str = ""
+    # Composite "{sheet_id}:{gid}" — identifies a specific tab. Used as a
+    # hidden form field to detect when admin switches to a different sheet/tab
+    # and to drive saved-template lookup.
+    sheet_ref: str = ""
     blocks: list[BlockView] = field(default_factory=list)
     error: str | None = None
     oauth_configured: bool = True
@@ -146,19 +149,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         mappings = _extract_mappings([(k, str(v)) for k, v in form.multi_items()])
         credentials = _current_credentials(request)
 
-        # Determine the sheet_id of THIS submission.
+        # Determine the (sheet_id, gid) of THIS submission — identifies a tab,
+        # not just a workbook (1 sheet_id can have many tabs with different data).
         current_sheet_id = ""
+        current_gid = 0
+        current_ref = ""
         if link:
             try:
-                current_sheet_id = sheets.parse_url(link).sheet_id
+                ref = sheets.parse_url(link)
+                current_sheet_id = ref.sheet_id
+                current_gid = ref.gid
+                current_ref = f"{ref.sheet_id}:{ref.gid}"
             except sheets.SheetURLError:
-                current_sheet_id = ""
+                current_ref = ""
 
-        # If admin changed the link, drop stale mappings carried over from the
-        # previous sheet — they reference columns that may not exist in the new
-        # sheet's header. `mapping_sheet_id` is a hidden field set at last render.
-        prev_sheet_id = (form.get("mapping_sheet_id") or "").strip()
-        if prev_sheet_id and prev_sheet_id != current_sheet_id:
+        # If admin changed the link/tab, drop stale mappings carried over from
+        # the previous render. `mapping_sheet_ref` is a hidden field set at the
+        # last render.
+        prev_ref = (form.get("mapping_sheet_ref") or "").strip()
+        if prev_ref and prev_ref != current_ref:
             mappings = {}
 
         blocks_view: list[BlockView] = []
@@ -174,14 +183,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 total_data = sum(len(d) for _, d in raw_blocks)
                 print(f"=== {len(raw_blocks)} block, {total_data} data rows ===")
 
-                # Try to auto-apply a saved template (matching by sheet_id). The
-                # form-submitted mapping wins if admin already dragged something.
+                # Try to auto-apply a saved template (matching by sheet_id+gid).
+                # The form-submitted mapping wins if admin already dragged
+                # something.
                 saved_map: dict[str, str] = {}
                 try:
-                    ref = sheets.parse_url(link)
                     sb = templates.get_supabase(settings)
-                    if sb is not None:
-                        found = templates.find_template(sb, ref.sheet_id)
+                    if sb is not None and current_sheet_id:
+                        found = templates.find_template(sb, current_sheet_id, current_gid)
                         if found.found and found.column_map:
                             saved_map = found.column_map
                 except Exception as exc:
@@ -221,7 +230,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             target_columns=target_columns(project_type),
             user_email=email,
             link=link,
-            sheet_id=current_sheet_id,
+            sheet_ref=current_ref,
             blocks=blocks_view,
             error=error,
             oauth_configured=settings.is_oauth_configured,
@@ -371,9 +380,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request.session.clear()
         return RedirectResponse("/", status_code=303)
 
-    @app.put("/templates/{sheet_id}")
+    @app.put("/templates/{sheet_id}/{gid}")
     def upsert_template_route(
         sheet_id: str,
+        gid: int,
         payload: templates.TemplatePayload,
         request: Request,
     ):
@@ -383,19 +393,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if sb is None:
             return Response("Supabase chưa được cấu hình", status_code=500)
         try:
-            templates.upsert_template(sb, sheet_id, payload)
+            templates.upsert_template(sb, sheet_id, gid, payload)
         except Exception as exc:
             return Response(f"Lưu thất bại: {exc}", status_code=500)
         return {"ok": True}
 
-    @app.get("/templates/{sheet_id}", response_model=templates.TemplateResponse)
-    def get_template_route(sheet_id: str, request: Request):
+    @app.get("/templates/{sheet_id}/{gid}", response_model=templates.TemplateResponse)
+    def get_template_route(sheet_id: str, gid: int, request: Request):
         if not _current_email(request):
             raise HTTPException(status_code=401, detail="Chưa đăng nhập")
         sb = templates.get_supabase(settings)
         if sb is None:
             raise HTTPException(status_code=500, detail="Supabase chưa được cấu hình")
-        return templates.find_template(sb, sheet_id)
+        return templates.find_template(sb, sheet_id, gid)
 
     return app
 

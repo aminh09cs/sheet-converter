@@ -59,7 +59,7 @@
             </div>
 
             <section class="link-row">
-                <input type="hidden" name="mapping_sheet_id" value="{{ view.sheet_id }}">
+                <input type="hidden" name="mapping_sheet_ref" value="{{ view.sheet_ref }}">
                 <label for="link" class="field-label">Link import</label>
                 <input id="link" name="link" type="url" class="text-input"
                        placeholder="https://docs.google.com/spreadsheets/d/..."
@@ -347,17 +347,22 @@
         });
 
         // ───── Lưu mapping template ─────
-        function extractSheetId(url) {
-            const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-            return m ? m[1] : null;
+        function parseSheetRef(url) {
+            const idMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+            if (!idMatch) return null;
+            const gidMatch = url.match(/[?#&]gid=(\d+)/);
+            return {
+                sheetId: idMatch[1],
+                gid: gidMatch ? parseInt(gidMatch[1], 10) : 0,
+            };
         }
 
         document.querySelectorAll('.btn-save-template').forEach((btn) => {
             btn.addEventListener('click', async () => {
                 const blockIdx = btn.dataset.block;
                 const sourceUrl = linkInput?.value?.trim() || '';
-                const sheetId = extractSheetId(sourceUrl);
-                if (!sheetId) {
+                const ref = parseSheetRef(sourceUrl);
+                if (!ref) {
                     alert('URL không hợp lệ');
                     return;
                 }
@@ -375,7 +380,8 @@
                 }
                 btn.disabled = true;
                 try {
-                    const resp = await fetch(`/templates/${encodeURIComponent(sheetId)}`, {
+                    const url = `/templates/${encodeURIComponent(ref.sheetId)}/${ref.gid}`;
+                    const resp = await fetch(url, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
